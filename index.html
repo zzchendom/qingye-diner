@@ -269,7 +269,7 @@ function getDef(id){return CHARACTERS.find(c=>c.id===id)||CHARACTERS[0];}
 
 // ---------- 状态 ----------
 let S=null;
-let player={col:GRID_W/2-0.5, row:GRID_H-1, tcol:GRID_W/2-0.5, trow:GRID_H-1, moving:false, pending:null, walkT:0};
+let player={col:6, row:4, path:[], moving:false, pending:null, walkT:0};
 function rnd(a,b){return a+Math.random()*(b-a);}
 function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
 function pick(arr){return arr[Math.floor(Math.random()*arr.length)];}
@@ -326,56 +326,205 @@ function genCustomers(){
 // ---------- 画布 ----------
 const cv=document.getElementById("cv"), ctx=cv.getContext("2d");
 let DC=ctx; // 当前绘制上下文（游戏画布 or 选人物小画布）
-let TILE=70, OX=0, OY=0;
+let TILE=64, VW=360, VH=520, dpr=1;
+
+// ===== 农场世界地图 =====
+const WORLD_W=14, WORLD_H=10;
+const FARM_X=4, FARM_Y=5;                       // 6x5 农田位于 x4..9, y5..9
+const DINER={x:2,y:2,w:3,h:2,doorX:3,doorY:4};  // 菜馆
+const SHOP={x:9,y:2,w:3,h:2,doorX:10,doorY:4};  // 商店
+const POND=[[1,7],[2,7],[1,8],[2,8]];
+const TREES=[[0,1],[0,6],[7,1],[13,1],[13,7],[12,3],[0,8]];
+const CUSTOMER_SPOTS=[[1,4],[5,4],[2,5],[1,5],[1,6],[2,6]];
+let TERR=[], WALK=[];
+function tkey(x,y){return y*WORLD_W+x;}
+function inField(x,y){return x>=FARM_X&&x<FARM_X+GRID_W&&y>=FARM_Y&&y<FARM_Y+GRID_H;}
+function tileToPlot(x,y){return inField(x,y)?((y-FARM_Y)*GRID_W+(x-FARM_X)):-1;}
+function buildWorld(){
+  TERR=new Array(WORLD_W*WORLD_H).fill("grass");
+  WALK=new Array(WORLD_W*WORLD_H).fill(true);
+  for(let x=1;x<=11;x++)TERR[tkey(x,4)]="path";       // 横向小路
+  for(let y=2;y<=4;y++)TERR[tkey(6,y)]="path";        // 竖向小路
+  for(const[x,y]of POND){TERR[tkey(x,y)]="water";WALK[tkey(x,y)]=false;}
+  for(let dx=0;dx<DINER.w;dx++)for(let dy=0;dy<DINER.h;dy++)WALK[tkey(DINER.x+dx,DINER.y+dy)]=false;
+  for(let dx=0;dx<SHOP.w;dx++)for(let dy=0;dy<SHOP.h;dy++)WALK[tkey(SHOP.x+dx,SHOP.y+dy)]=false;
+  TERR[tkey(DINER.doorX,DINER.doorY)]="path"; WALK[tkey(DINER.doorX,DINER.doorY)]=true;
+  TERR[tkey(SHOP.doorX,SHOP.doorY)]="path"; WALK[tkey(SHOP.doorX,SHOP.doorY)]=true;
+  for(const[x,y]of TREES)WALK[tkey(x,y)]=false;
+}
+function isWalkable(x,y){if(x<0||y<0||x>=WORLD_W||y>=WORLD_H)return false;return WALK[tkey(x,y)];}
+function findPath(sx,sy,tx,ty){                      // BFS 四向寻路
+  if(!isWalkable(tx,ty))return null;
+  const prev={}; prev[tkey(sx,sy)]=-1; const q=[[sx,sy]]; let head=0;
+  const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+  while(head<q.length){
+    const c=q[head++]; if(c[0]===tx&&c[1]===ty)break;
+    for(const d of dirs){const nx=c[0]+d[0],ny=c[1]+d[1];if(isWalkable(nx,ny)&&!(tkey(nx,ny)in prev)){prev[tkey(nx,ny)]=tkey(c[0],c[1]);q.push([nx,ny]);}}
+  }
+  if(!(tkey(tx,ty)in prev))return null;
+  const path=[]; let k=tkey(tx,ty);
+  while(k!==-1){path.push([k%WORLD_W,Math.floor(k/WORLD_W)]);k=prev[k];}
+  return path.reverse();
+}
+function nearestWalkable(tx,ty,fromx,fromy){          // 找目标附近可站的格子
+  if(isWalkable(tx,ty))return[tx,ty];
+  const dirs=[[1,0],[-1,0],[0,1],[0,-1]]; let best=null,bd=1e9;
+  for(const d of dirs){const nx=tx+d[0],ny=ty+d[1];if(isWalkable(nx,ny)){const dd=Math.abs(nx-fromx)+Math.abs(ny-fromy);if(dd<bd){bd=dd;best=[nx,ny];}}}
+  return best;
+}
+let cam={x:0,y:0};
+function updateCamera(){
+  const pw=WORLD_W*TILE, ph=WORLD_H*TILE;
+  const px=player.col*TILE+TILE/2, py=player.row*TILE+TILE/2;
+  cam.x = pw<=VW ? -(VW-pw)/2 : clamp(px-VW/2,0,pw-VW);
+  cam.y = ph<=VH ? -(VH-ph)/2 : clamp(py-VH/2,0,ph-VH);
+}
 function resize(){
   const stage=document.getElementById("stage");
-  const availW=stage.clientWidth-16, availH=stage.clientHeight-16;
-  const t=Math.floor(Math.min(availW/GRID_W, availH/(GRID_H+0.55)));
-  TILE=clamp(t,40,92);
-  cv.width=GRID_W*TILE; cv.height=GRID_H*TILE+Math.round(TILE*0.45);
-  OX=0; OY=Math.round(TILE*0.45);
+  VW=Math.max(240,stage.clientWidth-12); VH=Math.max(240,stage.clientHeight-12);
+  dpr=Math.min(window.devicePixelRatio||1,2);
+  TILE=clamp(Math.round(Math.min(VW,VH)/6.2),46,88);
+  cv.style.width=VW+"px"; cv.style.height=VH+"px";
+  cv.width=Math.round(VW*dpr); cv.height=Math.round(VH*dpr);
   draw();
 }
 window.addEventListener("resize",()=>{if(S)resize();});
 
 function rr(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
 
-let hover=-1, t0=Date.now();
+let hover={x:-1,y:-1}, t0=Date.now();
+function sx2(wx){return wx*TILE-cam.x;}
+function sy2(wy){return wy*TILE-cam.y;}
+function hsh(x,y){let h=(x*73856093)^(y*19349663);h=(h^(h>>>13))>>>0;return h;}
+
 function draw(){
   if(!S)return;
-  const W=cv.width,H=cv.height;
-  ctx.clearRect(0,0,W,H);
-  let g=ctx.createLinearGradient(0,0,0,H); g.addColorStop(0,"#bfe9c4"); g.addColorStop(1,"#9bd99f");
-  ctx.fillStyle=g; rr(0,0,W,H,22); ctx.fill();
+  DC=ctx; updateCamera();
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,VW,VH);
+  ctx.fillStyle="#8fcf86"; ctx.fillRect(0,0,VW,VH);
   const now=(Date.now()-t0)/1000;
-  for(let j=0;j<GRID_H;j++)for(let i=0;i<GRID_W;i++){
-    const idx=j*GRID_W+i,p=S.plots[idx];
-    const x=OX+i*TILE,y=OY+j*TILE,pad=3;
-    drawTile(x+pad,y+pad,TILE-pad*2,p,idx===hover,now);
-  }
-  drawPlayer();
+  const x0=Math.max(0,Math.floor(cam.x/TILE)), x1=Math.min(WORLD_W-1,Math.floor((cam.x+VW)/TILE));
+  const y0=Math.max(0,Math.floor(cam.y/TILE)), y1=Math.min(WORLD_H-1,Math.floor((cam.y+VH)/TILE));
+  for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++)drawGround(x,y,now);
+  for(let i=0;i<S.plots.length;i++){const col=i%GRID_W,row=Math.floor(i/GRID_W);drawPlotGround(FARM_X+col,FARM_Y+row,S.plots[i]);}
+  drawFieldFence();
+  // 实体按 y 深度排序（前后遮挡）
+  const ents=[];
+  ents.push({y:(DINER.y+DINER.h)*TILE, d:drawDiner});
+  ents.push({y:(SHOP.y+SHOP.h)*TILE, d:drawShop});
+  for(const t of TREES)ents.push({y:(t[1]+1)*TILE, d:()=>drawTree(t[0],t[1],now)});
+  for(let i=0;i<S.plots.length;i++){const p=S.plots[i];if(p.crop){const wx=FARM_X+i%GRID_W,wy=FARM_Y+Math.floor(i/GRID_W);ents.push({y:(wy+1)*TILE-2, d:()=>drawCrop(sx2(wx),sy2(wy),TILE,p,now)});}}
+  const nc=Math.min(S.customers.length,CUSTOMER_SPOTS.length);
+  for(let i=0;i<nc;i++){const sp=CUSTOMER_SPOTS[i],cu=S.customers[i];ents.push({y:(sp[1]+1)*TILE, d:()=>drawCustomer(sp[0],sp[1],cu,now)});}
+  ents.push({y:(player.row+1)*TILE, d:drawPlayer});
+  ents.sort((a,b)=>a.y-b.y);
+  for(const e of ents)e.d();
+  if(inField(hover.x,hover.y)){ctx.strokeStyle="rgba(255,255,255,.85)";ctx.lineWidth=3;rr(sx2(hover.x)+3,sy2(hover.y)+3,TILE-6,TILE-6,TILE*0.2);ctx.stroke();}
+  drawParticles();
 }
-function drawTile(x,y,s,p,hov,now){
-  const r=s*0.22;
-  if(!p.unlocked){
-    ctx.fillStyle="#c9b79c"; rr(x,y,s,s,r); ctx.fill();
-    ctx.globalAlpha=.5; ctx.font=`${s*0.4}px serif`; ctx.textAlign="center"; ctx.textBaseline="middle";
-    ctx.fillText("🔒",x+s/2,y+s/2); ctx.globalAlpha=1; return;
+function drawGround(x,y,now){
+  const X=sx2(x),Y=sy2(y),s=TILE,t=TERR[tkey(x,y)],hh=hsh(x,y);
+  if(t==="water"){
+    ctx.fillStyle="#6fc4e0"; ctx.fillRect(X,Y,s,s);
+    ctx.fillStyle="rgba(255,255,255,.30)"; const wob=Math.sin(now*1.5+x+y)*s*0.06;
+    ctx.beginPath();ctx.ellipse(X+s*0.5+wob,Y+s*0.4,s*0.18,s*0.05,0,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.ellipse(X+s*0.4-wob,Y+s*0.68,s*0.12,s*0.04,0,0,Math.PI*2);ctx.fill();
+    return;
   }
-  ctx.save(); if(hov)ctx.translate(0,-3);
-  if(!p.tilled){
-    let g=ctx.createLinearGradient(x,y,x,y+s); g.addColorStop(0,"#8ed98f"); g.addColorStop(1,"#6cc06f");
-    ctx.fillStyle=g; rr(x,y,s,s,r); ctx.fill();
-    ctx.fillStyle="rgba(255,255,255,.18)"; ctx.fillRect(x+s*0.25,y+s*0.3,2,s*0.12); ctx.fillRect(x+s*0.6,y+s*0.5,2,s*0.1);
+  ctx.fillStyle = t==="path" ? "#d8b88a" : (((x+y)&1)?"#8ace84":"#93d68d");
+  ctx.fillRect(X,Y,s,s);
+  if(t==="path"){
+    ctx.fillStyle="#c69f6c"; if(hh&1)ctx.fillRect(X+s*0.2,Y+s*0.3,s*0.12,s*0.08); if(hh&2)ctx.fillRect(X+s*0.6,Y+s*0.55,s*0.1,s*0.07);
+    ctx.fillStyle="#e6caa0"; if(hh&4)ctx.fillRect(X+s*0.45,Y+s*0.2,s*0.08,s*0.06);
   } else {
-    ctx.fillStyle=p.watered?"#9c6644":"#c08552"; rr(x,y,s,s,r); ctx.fill();
-    ctx.strokeStyle="rgba(0,0,0,.08)"; ctx.lineWidth=2;
-    for(let k=1;k<3;k++){ctx.beginPath();ctx.moveTo(x+4,y+s*k/3);ctx.lineTo(x+s-4,y+s*k/3);ctx.stroke();}
-    if(p.watered){ctx.fillStyle="rgba(90,176,224,.22)"; rr(x,y,s,s,r); ctx.fill();}
-    if(p.crop)drawCrop(x,y,s,p,now);
+    if(hh%5===0){ctx.fillStyle="rgba(60,150,70,.5)";ctx.fillRect(X+s*0.3,Y+s*0.6,2,s*0.14);ctx.fillRect(X+s*0.4,Y+s*0.62,2,s*0.12);}
+    if(hh%11===0){ctx.fillStyle=["#ff8fab","#ffd25a","#ff9f43","#ffffff"][hh%4];ctx.beginPath();ctx.arc(X+s*0.66,Y+s*0.42,s*0.06,0,Math.PI*2);ctx.fill();ctx.fillStyle="#ffe08a";ctx.beginPath();ctx.arc(X+s*0.66,Y+s*0.42,s*0.025,0,Math.PI*2);ctx.fill();}
   }
-  if(hov){ctx.strokeStyle="rgba(255,255,255,.9)"; ctx.lineWidth=3; rr(x,y,s,s,r); ctx.stroke();}
-  ctx.restore();
+}
+function drawPlotGround(wx,wy,p){
+  const X=sx2(wx),Y=sy2(wy),s=TILE,r=s*0.16;
+  if(!p.unlocked){
+    ctx.fillStyle="#9bbf7e"; rr(X+2,Y+2,s-4,s-4,r); ctx.fill();
+    ctx.globalAlpha=.45;ctx.font=`${s*0.32}px serif`;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText("🔒",X+s/2,Y+s/2);ctx.globalAlpha=1;return;
+  }
+  if(p.tilled){
+    ctx.fillStyle=p.watered?"#9c6644":"#bb8156"; rr(X+2,Y+2,s-4,s-4,r); ctx.fill();
+    ctx.strokeStyle="rgba(0,0,0,.10)";ctx.lineWidth=2;
+    for(let k=1;k<3;k++){ctx.beginPath();ctx.moveTo(X+6,Y+s*k/3);ctx.lineTo(X+s-6,Y+s*k/3);ctx.stroke();}
+    if(p.watered){ctx.fillStyle="rgba(90,176,224,.18)";rr(X+2,Y+2,s-4,s-4,r);ctx.fill();}
+  } else {
+    ctx.fillStyle="#7cc274"; rr(X+3,Y+3,s-6,s-6,r); ctx.fill();
+    ctx.strokeStyle="rgba(120,90,50,.28)";ctx.lineWidth=2;ctx.setLineDash([4,3]);rr(X+3,Y+3,s-6,s-6,r);ctx.stroke();ctx.setLineDash([]);
+  }
+}
+function drawFieldFence(){
+  const x0=sx2(FARM_X),y0=sy2(FARM_Y),w=GRID_W*TILE,h=GRID_H*TILE;
+  ctx.strokeStyle="#b5793f";ctx.lineWidth=Math.max(3,TILE*0.05);
+  ctx.beginPath();ctx.moveTo(x0,y0);ctx.lineTo(x0+w,y0);ctx.moveTo(x0,y0+h);ctx.lineTo(x0+w,y0+h);ctx.moveTo(x0,y0);ctx.lineTo(x0,y0+h);ctx.moveTo(x0+w,y0);ctx.lineTo(x0+w,y0+h);ctx.stroke();
+  const post=(px,py)=>{fillRR(px-TILE*0.045,py-TILE*0.16,TILE*0.09,TILE*0.28,2,"#c98a4a");fillRR(px-TILE*0.06,py-TILE*0.18,TILE*0.12,TILE*0.05,2,"#a8703a");};
+  for(let i=0;i<=GRID_W;i++){post(x0+i*TILE,y0);post(x0+i*TILE,y0+h);}
+  for(let j=1;j<GRID_H;j++){post(x0,y0+j*TILE);post(x0+w,y0+j*TILE);}
+  signBoard(x0+w*0.5,y0-TILE*0.1,"🌱 农田");
+}
+function fillRoundShadow(x,y,w,h){ctx.fillStyle="rgba(0,0,0,.10)";ctx.beginPath();ctx.ellipse(x+w/2,y+h,w*0.5,TILE*0.1,0,0,Math.PI*2);ctx.fill();}
+function signBoard(cx,cy,text){
+  ctx.font=`bold ${Math.round(TILE*0.22)}px sans-serif`;ctx.textAlign="center";ctx.textBaseline="middle";
+  const w=Math.max(TILE*1.2,ctx.measureText(text).width+TILE*0.34),h=TILE*0.4;
+  fillRR(cx-w/2,cy-h/2,w,h,TILE*0.08,"#7a4e28");
+  fillRR(cx-w/2+3,cy-h/2+3,w-6,h-6,TILE*0.06,"#cd9a5e");
+  ctx.fillStyle="#3f2812";ctx.fillText(text,cx,cy+1);
+}
+function drawDiner(){
+  const X=sx2(DINER.x),Y=sy2(DINER.y),w=DINER.w*TILE,h=DINER.h*TILE;
+  const wallX=X+w*0.06, wallW=w*0.88, wallTop=Y-TILE*0.05, wallH=h+TILE*0.05;
+  fillRoundShadow(wallX,wallTop,wallW,wallH);
+  fillRR(wallX,wallTop,wallW,wallH,TILE*0.12,"#fff0d6");
+  // 屋顶
+  ctx.fillStyle="#e0584e";ctx.beginPath();ctx.moveTo(X-w*0.02,wallTop+TILE*0.08);ctx.lineTo(X+w/2,wallTop-TILE*0.62);ctx.lineTo(X+w*1.02,wallTop+TILE*0.08);ctx.closePath();ctx.fill();
+  fillRR(X-w*0.02,wallTop,w*1.04,TILE*0.12,TILE*0.04,"#c8463d");
+  // 烟囱+烟
+  fillRR(X+w*0.7,wallTop-TILE*0.5,TILE*0.16,TILE*0.34,2,"#b56a44");
+  ctx.fillStyle="rgba(255,255,255,.6)";const sm=(Date.now()-t0)/600;
+  for(let i=0;i<3;i++){ctx.beginPath();ctx.arc(X+w*0.78+Math.sin(sm+i)*4,wallTop-TILE*0.6-i*TILE*0.18,TILE*0.06+i*0.01*TILE,0,Math.PI*2);ctx.fill();}
+  // 门窗
+  fillRR(X+w*0.4,wallTop+wallH-TILE*0.72,w*0.2,TILE*0.72,TILE*0.06,"#9a5b34");
+  ctx.fillStyle="#ffd25a";ctx.beginPath();ctx.arc(X+w*0.56,wallTop+wallH-TILE*0.36,TILE*0.03,0,Math.PI*2);ctx.fill();
+  fillRR(X+w*0.15,wallTop+wallH-TILE*0.9,TILE*0.34,TILE*0.34,TILE*0.05,"#bfe6ff");
+  fillRR(X+w*0.68,wallTop+wallH-TILE*0.9,TILE*0.34,TILE*0.34,TILE*0.05,"#bfe6ff");
+  signBoard(X+w/2,wallTop+TILE*0.18,"🍳 菜馆");
+}
+function drawShop(){
+  const X=sx2(SHOP.x),Y=sy2(SHOP.y),w=SHOP.w*TILE,h=SHOP.h*TILE,baseY=Y+h;
+  fillRoundShadow(X+w*0.08,baseY-TILE*0.7,w*0.84,TILE*0.7);
+  fillRR(X+w*0.1,baseY-TILE*0.7,w*0.8,TILE*0.7,TILE*0.06,"#caa06a");
+  fillRR(X+w*0.1,baseY-TILE*0.7,w*0.8,TILE*0.18,TILE*0.06,"#b5793f");
+  ctx.fillStyle="#9a6a3a";ctx.fillRect(X+w*0.12,baseY-TILE*1.5,TILE*0.08,TILE*0.85);ctx.fillRect(X+w*0.8,baseY-TILE*1.5,TILE*0.08,TILE*0.85);
+  const awX=X+w*0.05,awW=w*0.9,awY=baseY-TILE*1.55,stripes=6,stw=awW/stripes;
+  for(let i=0;i<stripes;i++){ctx.fillStyle=i%2?"#ff6b81":"#fff0e6";ctx.beginPath();ctx.moveTo(awX+i*stw,awY);ctx.lineTo(awX+(i+1)*stw,awY);ctx.lineTo(awX+(i+1)*stw,awY+TILE*0.3);ctx.lineTo(awX+i*stw+stw*0.5,awY+TILE*0.46);ctx.lineTo(awX+i*stw,awY+TILE*0.3);ctx.closePath();ctx.fill();}
+  fillRR(awX,awY-TILE*0.12,awW,TILE*0.14,TILE*0.04,"#e0584e");
+  ctx.font=`${Math.round(TILE*0.3)}px serif`;ctx.textAlign="center";ctx.textBaseline="middle";
+  ctx.fillText("🧺",X+w*0.3,baseY-TILE*0.44);ctx.fillText("🍅",X+w*0.5,baseY-TILE*0.44);ctx.fillText("🌾",X+w*0.7,baseY-TILE*0.44);
+  signBoard(X+w/2,awY-TILE*0.04,"🛒 商店");
+}
+function drawTree(x,y,now){
+  const cx=sx2(x)+TILE/2, by=sy2(y)+TILE*0.96, sway=Math.sin(now*1.2+x)*TILE*0.02;
+  ctx.fillStyle="rgba(0,0,0,.15)";ctx.beginPath();ctx.ellipse(cx,by,TILE*0.3,TILE*0.08,0,0,Math.PI*2);ctx.fill();
+  fillRR(cx-TILE*0.07,by-TILE*0.55,TILE*0.14,TILE*0.55,TILE*0.04,"#9a6a3a");
+  ctx.fillStyle="#4e9e52";ctx.beginPath();ctx.arc(cx+sway,by-TILE*0.95,TILE*0.42,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle="#5fb96b";ctx.beginPath();ctx.arc(cx-TILE*0.24+sway,by-TILE*0.8,TILE*0.3,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(cx+TILE*0.24+sway,by-TILE*0.8,TILE*0.3,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle="rgba(255,255,255,.18)";ctx.beginPath();ctx.arc(cx-TILE*0.1+sway,by-TILE*1.05,TILE*0.15,0,Math.PI*2);ctx.fill();
+}
+function drawCustomer(x,y,cu,now){
+  const cx=sx2(x)+TILE/2, by=sy2(y)+TILE*0.85, bob=Math.sin(now*2+x)*TILE*0.03;
+  ctx.fillStyle="rgba(0,0,0,.15)";ctx.beginPath();ctx.ellipse(cx,by,TILE*0.2,TILE*0.06,0,0,Math.PI*2);ctx.fill();
+  fillRR(cx-TILE*0.16,by-TILE*0.4-bob,TILE*0.32,TILE*0.4,TILE*0.14,cu.vip?"#ffd25a":"#cfe6ff");
+  ctx.font=`${Math.round(TILE*0.4)}px serif`;ctx.textAlign="center";ctx.textBaseline="middle";
+  ctx.fillText(cu.avatar,cx,by-TILE*0.5-bob);
+  const dish=DISHES[cu.dish];
+  fillRR(cx+TILE*0.1,by-TILE*1.02-bob,TILE*0.52,TILE*0.44,TILE*0.1,"#fffdf5");
+  ctx.fillStyle="#fffdf5";ctx.beginPath();ctx.moveTo(cx+TILE*0.2,by-TILE*0.62-bob);ctx.lineTo(cx+TILE*0.32,by-TILE*0.6-bob);ctx.lineTo(cx+TILE*0.22,by-TILE*0.5-bob);ctx.closePath();ctx.fill();
+  ctx.font=`${Math.round(TILE*0.28)}px serif`;ctx.fillText(dish.emoji,cx+TILE*0.36,by-TILE*0.8-bob);
 }
 function drawCrop(x,y,s,p,now){
   const c=CROPS[p.crop],cx=x+s/2,by=y+s*0.86;
@@ -401,8 +550,8 @@ function drawCrop(x,y,s,p,now){
 function drawPlayer(){
   if(!S)return;
   DC=ctx;
-  const px=OX+player.col*TILE+TILE/2, py=OY+player.row*TILE+TILE/2;
-  drawChar(px, py+TILE*0.30, TILE*0.95, getDef(S.playerChar), player.walkT, player.moving);
+  const px=player.col*TILE+TILE/2-cam.x, py=player.row*TILE+TILE/2-cam.y;
+  drawChar(px, py+TILE*0.28, TILE*0.95, getDef(S.playerChar), player.walkT, player.moving);
 }
 
 // ---------- Q 版角色绘制（通用，DC 为当前上下文）----------
@@ -483,37 +632,48 @@ function charFace(cx,cy,r,def){
   DC.strokeStyle="rgba(90,60,40,.55)";DC.lineWidth=Math.max(1,r*0.05);DC.beginPath();DC.arc(cx,cy+r*0.30,r*0.18,Math.PI*0.18,Math.PI*0.82);DC.stroke();
 }
 
-// ---------- 人物移动 ----------
+// ---------- 人物移动（BFS 寻路、沿路径行走，绕开建筑/树/池塘）----------
 function stepPlayer(){
-  if(!player.moving)return;
-  player.walkT+=0.35;
-  const dx=player.tcol-player.col, dy=player.trow-player.row, dist=Math.hypot(dx,dy), sp=0.18;
-  if(dist<=sp){player.col=player.tcol;player.row=player.trow;player.moving=false;const cb=player.pending;player.pending=null;if(cb)cb();}
-  else {player.col+=dx/dist*sp; player.row+=dy/dist*sp;}
+  if(!player.path||!player.path.length){if(player.moving){player.moving=false;const cb=player.pending;player.pending=null;if(cb)cb();}return;}
+  player.moving=true; player.walkT+=0.35;
+  const wp=player.path[0], dx=wp[0]-player.col, dy=wp[1]-player.row, dist=Math.hypot(dx,dy), sp=0.16;
+  if(dist<=sp){player.col=wp[0];player.row=wp[1];player.path.shift();
+    if(!player.path.length){player.moving=false;const cb=player.pending;player.pending=null;if(cb)cb();}}
+  else{player.col+=dx/dist*sp;player.row+=dy/dist*sp;}
 }
-function walkTo(idx,cb){
-  player.tcol=idx%GRID_W; player.trow=Math.floor(idx/GRID_W); player.moving=true; player.pending=cb;
+function goTo(tx,ty,cb){
+  const sx=Math.round(player.col), sy=Math.round(player.row);
+  const path=findPath(sx,sy,tx,ty);
+  if(!path){player.path=[];player.pending=null;if(cb)cb();return;}
+  player.path=path.slice(1); player.pending=cb||null; player.moving=player.path.length>0;
+  if(!player.path.length&&cb)cb();
 }
 
-// ---------- 触控 ----------
-function evtToTile(clientX,clientY){
+// ---------- 触控/点击 ----------
+function screenToWorldTile(clientX,clientY){
   const rect=cv.getBoundingClientRect();
-  const px=(clientX-rect.left)*(cv.width/rect.width), py=(clientY-rect.top)*(cv.height/rect.height);
-  const i=Math.floor((px-OX)/TILE), j=Math.floor((py-OY)/TILE);
-  if(i<0||i>=GRID_W||j<0||j>=GRID_H)return -1;
-  return j*GRID_W+i;
+  const px=(clientX-rect.left)*(VW/rect.width)+cam.x, py=(clientY-rect.top)*(VH/rect.height)+cam.y;
+  return {x:Math.floor(px/TILE), y:Math.floor(py/TILE)};
 }
-cv.addEventListener("mousemove",e=>{const t=evtToTile(e.clientX,e.clientY);if(t!==hover)hover=t;});
-cv.addEventListener("mouseleave",()=>hover=-1);
-cv.addEventListener("click",e=>{const t=evtToTile(e.clientX,e.clientY);if(t>=0)tileAction(t);});
-cv.addEventListener("touchstart",e=>{e.preventDefault();const tc=e.touches[0];const t=evtToTile(tc.clientX,tc.clientY);if(t>=0){hover=t;tileAction(t);}},{passive:false});
+function inBuilding(b,x,y){return x>=b.x&&x<b.x+b.w&&y>=b.y&&y<b.y+b.h;}
+cv.addEventListener("mousemove",e=>{const t=screenToWorldTile(e.clientX,e.clientY);hover.x=t.x;hover.y=t.y;});
+cv.addEventListener("mouseleave",()=>{hover.x=-1;hover.y=-1;});
+cv.addEventListener("click",e=>{const t=screenToWorldTile(e.clientX,e.clientY);handleTap(t.x,t.y);});
+cv.addEventListener("touchstart",e=>{e.preventDefault();const tc=e.touches[0];const t=screenToWorldTile(tc.clientX,tc.clientY);hover.x=t.x;hover.y=t.y;handleTap(t.x,t.y);},{passive:false});
 cv.addEventListener("touchmove",e=>e.preventDefault(),{passive:false});
 
-function tileAction(idx){
-  const p=S.plots[idx];
-  if(!p.unlocked){toast("这块地还没解锁，去商店买地～");return;}
-  const tool=S.tool;
-  walkTo(idx,()=>doTileAction(idx,tool));
+function handleTap(x,y){
+  if(x<0||y<0||x>=WORLD_W||y>=WORLD_H)return;
+  const idx=tileToPlot(x,y);
+  if(idx>=0){                                    // 农田：走过去干活
+    const p=S.plots[idx];
+    if(!p.unlocked){toast("这块地还没解锁，去商店买地～");return;}
+    const tool=S.tool; goTo(x,y,()=>doTileAction(idx,tool)); return;
+  }
+  if(inBuilding(DINER,x,y)){goTo(DINER.doorX,DINER.doorY,()=>{dinerTab="orders";openDiner();});return;}
+  if(inBuilding(SHOP,x,y)){goTo(SHOP.doorX,SHOP.doorY,()=>openShop());return;}
+  for(let i=0;i<Math.min(S.customers.length,CUSTOMER_SPOTS.length);i++){const s=CUSTOMER_SPOTS[i];if(s[0]===x&&s[1]===y){goTo(DINER.doorX,DINER.doorY,()=>{dinerTab="orders";openDiner();});return;}}
+  if(isWalkable(x,y))goTo(x,y,null);             // 空地：散步
 }
 function doTileAction(idx,tool){
   const p=S.plots[idx];
@@ -558,11 +718,11 @@ function useEnergy(n){if(S.energy<n){toast("体力不够了，打烊睡一觉吧
 
 let particles=[];
 function sparkle(idx){
-  const i=idx%GRID_W,j=Math.floor(idx/GRID_W);
-  const x=OX+i*TILE+TILE/2,y=OY+j*TILE+TILE/2;
+  const wx=FARM_X+idx%GRID_W, wy=FARM_Y+Math.floor(idx/GRID_W);
+  const x=wx*TILE+TILE/2, y=wy*TILE+TILE/2;   // 世界像素坐标
   for(let k=0;k<8;k++)particles.push({x,y,vx:rnd(-2,2),vy:rnd(-3,-1),life:1});
 }
-function drawParticles(){for(const p of particles){ctx.globalAlpha=clamp(p.life,0,1);ctx.font="16px serif";ctx.textAlign="center";ctx.fillText("✨",p.x,p.y);}ctx.globalAlpha=1;}
+function drawParticles(){ctx.textAlign="center";ctx.textBaseline="middle";ctx.font=`${Math.round(TILE*0.26)}px serif`;for(const p of particles){ctx.globalAlpha=clamp(p.life,0,1);ctx.fillText("✨",p.x-cam.x,p.y-cam.y);}ctx.globalAlpha=1;}
 function stepParticles(){for(const p of particles){p.x+=p.vx;p.y+=p.vy;p.vy+=0.15;p.life-=0.03;}particles=particles.filter(p=>p.life>0);}
 
 // ---------- 打烊 ----------
@@ -627,7 +787,7 @@ function refresh(){
   tk.innerHTML=wait>0?`🍽️ 有 <b>${wait}</b> 位客人在等位，去「🍳菜馆」招待吧！`:`✨ 客人都招待完啦，悠闲地打烊吧～`;
   draw();
 }
-function loop(){stepPlayer();stepParticles();draw();drawParticles();requestAnimationFrame(loop);}
+function loop(){stepPlayer();stepParticles();draw();requestAnimationFrame(loop);}
 
 let toastTimer=null;
 function toast(msg){const t=document.getElementById("toast");t.textContent=msg;t.classList.add("on");clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove("on"),1600);}
@@ -809,8 +969,8 @@ document.getElementById("btnSleep").onclick=sleep;
 
 // ---------- 启动流程 ----------
 let started=false;
-function initPlayer(){player.col=GRID_W/2-0.5; player.row=GRID_H-1; player.tcol=player.col; player.trow=player.row; player.moving=false; player.pending=null; player.walkT=0;}
-function enterGame(){initPlayer();resize();refreshToolbar();refresh();if(!started){started=true;loop();}}
+function initPlayer(){player.col=6; player.row=4; player.path=[]; player.moving=false; player.pending=null; player.walkT=0;}
+function enterGame(){buildWorld();initPlayer();resize();refreshToolbar();refresh();if(!started){started=true;loop();}}
 
 // 起名页：人物选择（画出会走路的小人）
 let selectedChar=CHARACTERS[0].id;
