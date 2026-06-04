@@ -121,6 +121,8 @@
     justify-content:center; gap:16px; padding:24px; text-align:center;
     background:linear-gradient(180deg,#aee7f0,#cdeFd4 60%,#bfe7b0);}
   #setup{display:none;}
+  #setup.fullscreen{justify-content:flex-start; overflow-y:auto; -webkit-overflow-scrolling:touch;
+    padding:calc(22px + var(--safeT)) 18px calc(22px + var(--safeB));}
   .fullscreen h1{font-size:36px; margin:0; color:#3e7d4a; text-shadow:3px 3px 0 #fff, 0 6px 0 rgba(0,0,0,.1);}
   .fullscreen p{max-width:430px; font-size:14.5px; line-height:1.75; color:var(--ink); background:rgba(255,253,245,.85);
     padding:16px 20px; border-radius:18px; border:3px solid var(--line2);}
@@ -132,9 +134,12 @@
   #resetBtn{margin-top:2px; font-size:12px; color:#6b7d8a; background:none; border:none; cursor:pointer; text-decoration:underline;}
   #nameInput{font-size:18px; font-weight:800; text-align:center; padding:12px 16px; border-radius:16px;
     border:3px solid var(--line2); background:#fff; color:var(--ink); width:220px; outline:none;}
-  .charGrid{display:flex; gap:10px; flex-wrap:wrap; justify-content:center; max-width:320px;}
-  .charBtn{width:64px; height:64px; border-radius:16px; background:#fff; border:3px solid var(--line2);
-    font-size:34px; cursor:pointer; box-shadow:0 4px 0 rgba(0,0,0,.12); display:flex; align-items:center; justify-content:center; transition:transform .08s;}
+  .charGrid{display:flex; gap:9px; flex-wrap:wrap; justify-content:center; max-width:344px;}
+  .charBtn{width:76px; border-radius:14px; background:#fff; border:3px solid var(--line2);
+    cursor:pointer; box-shadow:0 4px 0 rgba(0,0,0,.12); display:flex; flex-direction:column; align-items:center;
+    padding:6px 4px 5px; gap:2px; transition:transform .08s;}
+  .charBtn canvas{display:block;}
+  .charBtn .cn{font-size:11px; font-weight:800; color:var(--ink2);}
   .charBtn.on{border-color:var(--green-d); background:#eafbe7; transform:translateY(-3px); box-shadow:0 7px 0 var(--green-d);}
   .setupCard{background:rgba(255,253,245,.9); border:3px solid var(--line2); border-radius:20px; padding:18px 20px;
     display:flex; flex-direction:column; gap:14px; align-items:center;}
@@ -245,18 +250,33 @@ const DISHES={
 };
 const AVATARS=["🐰","🐱","🐻","🐼","🦊","🐧","🐹","🐨","🐯","🐮","🐷","🐸"];
 const NAMES=["露露","团子","麻薯","布丁","可可","奶昔","莓莓","豆豆","咪咪","球球","棉花","糯米","小柚","栗子","花卷","汤圆","年糕","啵啵","噗噗","果果","泡芙","椰椰","桃桃","柚子","糖糖","乖乖"];
-const CHARS=["👩‍🌾","👨‍🌾","👧","👦","👵","👴"];
+// 用代码绘制的 Q 版角色（有头有身有手脚、走路会摆动）
+const CHARACTERS=[
+  {id:"farmer_f",type:"human",name:"农家女",skin:"#f7c89c",hair:"#7a4a25",hairStyle:"bob",body:"#6fae5f",bodyD:"#548f47",leg:"#6b4a2e"},
+  {id:"girl_pink",type:"human",name:"金发女孩",skin:"#ffd6b0",hair:"#ffcf4d",hairStyle:"long",body:"#ff8fab",bodyD:"#e2718e",leg:"#c98aa0"},
+  {id:"girl_twin",type:"human",name:"双马尾",skin:"#f7c89c",hair:"#6b46b0",hairStyle:"twin",body:"#ffd25a",bodyD:"#e0b23f",leg:"#7a5fb0"},
+  {id:"boy_blue",type:"human",name:"蓝衣男孩",skin:"#f3c193",hair:"#3a2a1a",hairStyle:"short",body:"#4f8cc9",bodyD:"#3d72a8",leg:"#3a2a1a"},
+  {id:"boy_red",type:"human",name:"红衣少年",skin:"#f3c193",hair:"#d9622b",hairStyle:"short",body:"#ef476f",bodyD:"#cf3457",leg:"#5b3a1e"},
+  {id:"cat",type:"animal",ears:"cat",name:"小橘猫",skin:"#ffb86b",accent:"#ff9f43",body:"#ffe0a3",bodyD:"#efc878",leg:"#ffb86b"},
+  {id:"bunny",type:"animal",ears:"bunny",name:"小白兔",skin:"#fcfcfc",accent:"#ffc2d4",body:"#ffd9e2",bodyD:"#f0bccb",leg:"#fcfcfc"},
+  {id:"bear",type:"animal",ears:"bear",name:"小熊",skin:"#c89564",accent:"#a87a4e",body:"#8fc7e8",bodyD:"#73aed1",leg:"#c89564"},
+  {id:"dog",type:"animal",ears:"dog",name:"小狗",skin:"#e7b884",accent:"#c8915c",body:"#9fd98a",bodyD:"#82c06d",leg:"#e7b884"},
+  {id:"penguin",type:"animal",ears:"penguin",name:"小企鹅",skin:"#3a4654",accent:"#ffb74d",body:"#3a4654",bodyD:"#2c3640",leg:"#ffb74d",belly:"#fdfdfd"},
+  {id:"frog",type:"animal",ears:"frog",name:"小青蛙",skin:"#7ec85a",accent:"#5fa83f",body:"#7ec85a",bodyD:"#5fa83f",leg:"#5fa83f"},
+  {id:"fox",type:"animal",ears:"fox",name:"小狐狸",skin:"#ff9f43",accent:"#fff3e0",body:"#ff9f43",bodyD:"#e0832b",leg:"#ff9f43"},
+];
+function getDef(id){return CHARACTERS.find(c=>c.id===id)||CHARACTERS[0];}
 
 // ---------- 状态 ----------
 let S=null;
-let player={col:GRID_W/2-0.5, row:GRID_H-1, tcol:GRID_W/2-0.5, trow:GRID_H-1, moving:false, pending:null};
+let player={col:GRID_W/2-0.5, row:GRID_H-1, tcol:GRID_W/2-0.5, trow:GRID_H-1, moving:false, pending:null, walkT:0};
 function rnd(a,b){return a+Math.random()*(b-a);}
 function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
 function pick(arr){return arr[Math.floor(Math.random()*arr.length)];}
 
-function newGame(name,avatar){
+function newGame(name,charId){
   S={
-    playerName:(name&&name.trim())?name.trim():"老板", playerAvatar:avatar||"👩‍🌾",
+    playerName:(name&&name.trim())?name.trim():"老板", playerChar:charId||"farmer_f",
     day:1, season:0, year:1,
     gold:500, fame:0, energy:100, maxEnergy:100,
     plots:Array.from({length:GRID_W*GRID_H},(_,i)=>({unlocked:i<START_PLOTS,tilled:false,crop:null,growth:0,watered:false,ready:false})),
@@ -305,6 +325,7 @@ function genCustomers(){
 
 // ---------- 画布 ----------
 const cv=document.getElementById("cv"), ctx=cv.getContext("2d");
+let DC=ctx; // 当前绘制上下文（游戏画布 or 选人物小画布）
 let TILE=70, OX=0, OY=0;
 function resize(){
   const stage=document.getElementById("stage");
@@ -378,19 +399,95 @@ function drawCrop(x,y,s,p,now){
   function leaf(lx,ly,rr2,dir){ctx.save();ctx.translate(lx,ly);ctx.rotate(dir);ctx.beginPath();ctx.ellipse(rr2*0.7,0,rr2,rr2*0.5,0,0,Math.PI*2);ctx.fill();ctx.restore();}
 }
 function drawPlayer(){
-  if(!S||!S.playerAvatar)return;
+  if(!S)return;
+  DC=ctx;
   const px=OX+player.col*TILE+TILE/2, py=OY+player.row*TILE+TILE/2;
-  const bob=player.moving?Math.abs(Math.sin((Date.now()-t0)/90))*4:Math.sin((Date.now()-t0)/500)*1.5;
-  ctx.fillStyle="rgba(0,0,0,.16)"; ctx.beginPath();
-  ctx.ellipse(px,py+TILE*0.30,TILE*0.22,TILE*0.085,0,0,Math.PI*2); ctx.fill();
-  ctx.font=`${TILE*0.6}px serif`; ctx.textAlign="center"; ctx.textBaseline="middle";
-  ctx.fillText(S.playerAvatar, px, py-TILE*0.10-bob);
+  drawChar(px, py+TILE*0.30, TILE*0.95, getDef(S.playerChar), player.walkT, player.moving);
+}
+
+// ---------- Q 版角色绘制（通用，DC 为当前上下文）----------
+function fillRR(x,y,w,h,r,c){DC.fillStyle=c;const rad=Math.min(r,w/2,h/2);DC.beginPath();DC.moveTo(x+rad,y);DC.arcTo(x+w,y,x+w,y+h,rad);DC.arcTo(x+w,y+h,x,y+h,rad);DC.arcTo(x,y+h,x,y,rad);DC.arcTo(x,y,x+w,y,rad);DC.closePath();DC.fill();}
+function fillEl(cx,cy,rx,ry,c){DC.fillStyle=c;DC.beginPath();DC.ellipse(cx,cy,rx,ry,0,0,Math.PI*2);DC.fill();}
+function triUp(x,baseY,hw,h,c){DC.fillStyle=c;DC.beginPath();DC.moveTo(x-hw,baseY);DC.lineTo(x,baseY-h);DC.lineTo(x+hw,baseY);DC.closePath();DC.fill();}
+function drawChar(cx,feetY,H,def,walkT,moving){
+  const bodyW=H*0.42, headR=H*0.27, r=headR;
+  const step=moving?Math.sin(walkT):0;
+  const tnow=(Date.now()-t0)/1000;
+  const bob=moving?Math.abs(Math.sin(walkT))*H*0.03:Math.sin(tnow*1.6)*H*0.012;
+  const Y=feetY-bob;
+  // 影子（按真实落脚点）
+  DC.fillStyle="rgba(0,0,0,.15)"; DC.beginPath(); DC.ellipse(cx,feetY,bodyW*0.52,H*0.045,0,0,Math.PI*2); DC.fill();
+  // 腿/脚
+  const legW=H*0.12, legH=H*0.15;
+  fillRR(cx-bodyW*0.22-legW/2, Y-legH+step*H*0.04, legW, legH, legW/2, def.leg||"#6b4a2e");
+  fillRR(cx+bodyW*0.22-legW/2, Y-legH-step*H*0.04, legW, legH, legW/2, def.leg||"#6b4a2e");
+  const bodyBot=Y-legH*0.75, bodyTop=Y-H*0.52, bodyH=bodyBot-bodyTop;
+  // 手臂（先画，藏在身后）
+  const armW=H*0.11, armH=H*0.21;
+  fillRR(cx-bodyW/2-armW*0.35, bodyTop+H*0.06-step*H*0.03, armW, armH, armW/2, def.bodyD);
+  fillRR(cx+bodyW/2-armW*0.65, bodyTop+H*0.06+step*H*0.03, armW, armH, armW/2, def.bodyD);
+  // 身体
+  fillRR(cx-bodyW/2, bodyTop, bodyW, bodyH, H*0.15, def.body);
+  // 身体下部阴影
+  DC.save(); const rad=Math.min(H*0.15,bodyW/2,bodyH/2);
+  DC.beginPath();DC.moveTo(cx-bodyW/2+rad,bodyTop);DC.arcTo(cx+bodyW/2,bodyTop,cx+bodyW/2,bodyBot,rad);DC.arcTo(cx+bodyW/2,bodyBot,cx-bodyW/2,bodyBot,rad);DC.arcTo(cx-bodyW/2,bodyBot,cx-bodyW/2,bodyTop,rad);DC.arcTo(cx-bodyW/2,bodyTop,cx+bodyW/2,bodyTop,rad);DC.closePath();DC.clip();
+  DC.fillStyle=def.bodyD; DC.fillRect(cx-bodyW/2,bodyBot-bodyH*0.35,bodyW,bodyH*0.35);
+  DC.restore();
+  if(def.belly)fillEl(cx,(bodyTop+bodyBot)/2+H*0.02,bodyW*0.26,bodyH*0.36,def.belly);
+  const headCY=bodyTop-headR*0.55;
+  charBehind(cx,headCY,r,def);
+  fillEl(cx,headCY,headR,headR*0.96,def.skin); // 头
+  charFront(cx,headCY,r,def);
+  charFace(cx,headCY,r,def);
+}
+function charBehind(cx,cy,r,def){
+  if(def.type==="human"){
+    if(def.hairStyle==="long")fillEl(cx,cy+r*0.45,r*1.08,r*1.05,def.hair);
+    if(def.hairStyle==="twin"){fillEl(cx-r*0.95,cy+r*0.25,r*0.42,r*0.62,def.hair);fillEl(cx+r*0.95,cy+r*0.25,r*0.42,r*0.62,def.hair);}
+  }else if(def.ears==="bunny"){
+    fillEl(cx-r*0.45,cy-r*1.25,r*0.25,r*0.72,def.skin);fillEl(cx+r*0.45,cy-r*1.25,r*0.25,r*0.72,def.skin);
+    fillEl(cx-r*0.45,cy-r*1.25,r*0.12,r*0.46,def.accent);fillEl(cx+r*0.45,cy-r*1.25,r*0.12,r*0.46,def.accent);
+  }
+}
+function charFront(cx,cy,r,def){
+  if(def.type==="human"){
+    fillEl(cx,cy-r*0.45,r*1.0,r*0.62,def.hair);            // 头顶发
+    if(def.hairStyle==="bob"){fillEl(cx-r*0.86,cy-r*0.05,r*0.3,r*0.6,def.hair);fillEl(cx+r*0.86,cy-r*0.05,r*0.3,r*0.6,def.hair);}
+    fillEl(cx,cy-r*0.32,r*0.92,r*0.34,def.skin);           // 露出额头/脸
+  }else{
+    if(def.ears==="cat"){triUp(cx-r*0.55,cy-r*0.35,r*0.32,r*0.55,def.skin);triUp(cx+r*0.55,cy-r*0.35,r*0.32,r*0.55,def.skin);triUp(cx-r*0.55,cy-r*0.4,r*0.16,r*0.32,def.accent);triUp(cx+r*0.55,cy-r*0.4,r*0.16,r*0.32,def.accent);}
+    if(def.ears==="fox"){triUp(cx-r*0.6,cy-r*0.3,r*0.36,r*0.66,def.skin);triUp(cx+r*0.6,cy-r*0.3,r*0.36,r*0.66,def.skin);triUp(cx-r*0.6,cy-r*0.36,r*0.18,r*0.4,def.accent);triUp(cx+r*0.6,cy-r*0.36,r*0.18,r*0.4,def.accent);}
+    if(def.ears==="bear"){fillEl(cx-r*0.68,cy-r*0.72,r*0.32,r*0.32,def.skin);fillEl(cx+r*0.68,cy-r*0.72,r*0.32,r*0.32,def.skin);fillEl(cx-r*0.68,cy-r*0.72,r*0.16,r*0.16,def.accent);fillEl(cx+r*0.68,cy-r*0.72,r*0.16,r*0.16,def.accent);}
+    if(def.ears==="dog"){fillEl(cx-r*0.86,cy-r*0.05,r*0.26,r*0.5,def.accent);fillEl(cx+r*0.86,cy-r*0.05,r*0.26,r*0.5,def.accent);}
+  }
+}
+function charFace(cx,cy,r,def){
+  // 企鹅白脸 / 青蛙凸眼在头顶
+  if(def.ears==="penguin")fillEl(cx,cy+r*0.12,r*0.62,r*0.78,"#fdfdfd");
+  let ex=r*0.34, ey=cy+r*0.04;
+  if(def.ears==="frog"){
+    fillEl(cx-r*0.5,cy-r*0.78,r*0.34,r*0.34,def.skin);fillEl(cx+r*0.5,cy-r*0.78,r*0.34,r*0.34,def.skin);
+    fillEl(cx-r*0.5,cy-r*0.8,r*0.16,r*0.16,"#fff");fillEl(cx+r*0.5,cy-r*0.8,r*0.16,r*0.16,"#fff");
+    fillEl(cx-r*0.5,cy-r*0.76,r*0.08,r*0.09,"#2a2a2a");fillEl(cx+r*0.5,cy-r*0.76,r*0.08,r*0.09,"#2a2a2a");
+  }else{
+    fillEl(cx-ex,ey,r*0.11,r*0.14,"#3a2a22");fillEl(cx+ex,ey,r*0.11,r*0.14,"#3a2a22");
+    fillEl(cx-ex+r*0.04,ey-r*0.04,r*0.04,r*0.04,"#fff");fillEl(cx+ex+r*0.04,ey-r*0.04,r*0.04,r*0.04,"#fff");
+  }
+  // 腮红
+  DC.fillStyle="rgba(255,140,165,.5)";
+  DC.beginPath();DC.ellipse(cx-r*0.56,cy+r*0.32,r*0.16,r*0.1,0,0,Math.PI*2);DC.fill();
+  DC.beginPath();DC.ellipse(cx+r*0.56,cy+r*0.32,r*0.16,r*0.1,0,0,Math.PI*2);DC.fill();
+  // 鼻/嘴
+  if(def.type==="animal"&&def.ears!=="penguin"&&def.ears!=="frog")fillEl(cx,cy+r*0.24,r*0.09,r*0.07,"#5b4636");
+  if(def.ears==="penguin"){DC.fillStyle=def.accent;DC.beginPath();DC.moveTo(cx-r*0.16,cy+r*0.16);DC.lineTo(cx+r*0.16,cy+r*0.16);DC.lineTo(cx,cy+r*0.4);DC.closePath();DC.fill();}
+  DC.strokeStyle="rgba(90,60,40,.55)";DC.lineWidth=Math.max(1,r*0.05);DC.beginPath();DC.arc(cx,cy+r*0.30,r*0.18,Math.PI*0.18,Math.PI*0.82);DC.stroke();
 }
 
 // ---------- 人物移动 ----------
 function stepPlayer(){
   if(!player.moving)return;
-  const dx=player.tcol-player.col, dy=player.trow-player.row, dist=Math.hypot(dx,dy), sp=0.2;
+  player.walkT+=0.35;
+  const dx=player.tcol-player.col, dy=player.trow-player.row, dist=Math.hypot(dx,dy), sp=0.18;
   if(dist<=sp){player.col=player.tcol;player.row=player.trow;player.moving=false;const cb=player.pending;player.pending=null;if(cb)cb();}
   else {player.col+=dx/dist*sp; player.row+=dy/dist*sp;}
 }
@@ -712,18 +809,39 @@ document.getElementById("btnSleep").onclick=sleep;
 
 // ---------- 启动流程 ----------
 let started=false;
-function initPlayer(){player.col=GRID_W/2-0.5; player.row=GRID_H-1; player.tcol=player.col; player.trow=player.row; player.moving=false; player.pending=null;}
+function initPlayer(){player.col=GRID_W/2-0.5; player.row=GRID_H-1; player.tcol=player.col; player.trow=player.row; player.moving=false; player.pending=null; player.walkT=0;}
 function enterGame(){initPlayer();resize();refreshToolbar();refresh();if(!started){started=true;loop();}}
 
-// 起名页：人物选择
-let selectedChar=CHARS[0];
+// 起名页：人物选择（画出会走路的小人）
+let selectedChar=CHARACTERS[0].id;
+let setupRAF=null;
 function buildCharGrid(){
   const g=document.getElementById("charGrid"); g.innerHTML="";
-  CHARS.forEach((ch,i)=>{
-    const b=document.createElement("div"); b.className="charBtn"+(ch===selectedChar?" on":"");
-    b.textContent=ch; b.onclick=()=>{selectedChar=ch;buildCharGrid();};
+  CHARACTERS.forEach(def=>{
+    const b=document.createElement("div"); b.className="charBtn"+(def.id===selectedChar?" on":"");
+    const cn=document.createElement("canvas"); cn.width=60; cn.height=70; cn.dataset.id=def.id;
+    const lbl=document.createElement("div"); lbl.className="cn"; lbl.textContent=def.name;
+    b.appendChild(cn); b.appendChild(lbl);
+    b.onclick=()=>{selectedChar=def.id;buildCharGrid();};
     g.appendChild(b);
   });
+  startSetupAnim();
+}
+function startSetupAnim(){
+  if(setupRAF)return;
+  function fr(){
+    const setup=document.getElementById("setup");
+    if(setup.style.display==="none"){cancelAnimationFrame(setupRAF);setupRAF=null;return;}
+    const wt=(Date.now()-t0)/1000*7;
+    document.querySelectorAll("#charGrid canvas").forEach(cn=>{
+      const def=getDef(cn.dataset.id); DC=cn.getContext("2d");
+      DC.clearRect(0,0,cn.width,cn.height);
+      drawChar(cn.width/2, cn.height-6, cn.height-20, def, wt, true);
+    });
+    DC=ctx;
+    setupRAF=requestAnimationFrame(fr);
+  }
+  setupRAF=requestAnimationFrame(fr);
 }
 
 document.getElementById("startBtn").onclick=()=>{
@@ -733,14 +851,14 @@ document.getElementById("startBtn").onclick=()=>{
     if(S.fame===undefined)S.fame=0;
     if(S.todayEarn===undefined){S.todayEarn=0;S.todayServed=0;}
     if(!S.playerName)S.playerName="老板";
-    if(!S.playerAvatar)S.playerAvatar="👩‍🌾";
+    if(!S.playerChar)S.playerChar="farmer_f";
     S.customers.forEach(c=>{if(!c.name)c.name=pick(NAMES);});
     document.getElementById("intro").style.display="none";
     enterGame(); toast(`欢迎回来，${S.playerName}老板～`);
   }else{
     document.getElementById("intro").style.display="none";
     document.getElementById("setup").style.display="flex";
-    selectedChar=CHARS[0]; buildCharGrid();
+    selectedChar=CHARACTERS[0].id; buildCharGrid();
   }
 };
 document.getElementById("setupOk").onclick=()=>{
