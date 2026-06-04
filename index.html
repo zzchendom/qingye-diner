@@ -101,6 +101,23 @@
     background:#f0e0c0; color:#8a6f57; cursor:pointer; border:3px solid var(--line);}
   .tab.on{background:var(--green); color:#fff; border-color:var(--green-d);}
   .sectit{font-weight:900; margin:6px 2px 8px; color:#7a5418; font-size:14px;}
+  /* 钓鱼 / 下矿 */
+  .fishwrap{display:flex; flex-direction:column; align-items:center; gap:14px; padding:14px 6px; text-align:center;}
+  .fishbig{font-size:60px; animation:bob 1.6s ease-in-out infinite;}
+  .fishmsg{font-size:15px; font-weight:800; color:var(--ink); line-height:1.5;}
+  .fishhint{font-size:12px; color:var(--ink2); font-weight:600;}
+  #fishcv{background:#cdeefb; border:3px solid var(--line2); border-radius:12px; width:300px; max-width:100%;}
+  .bigpill{padding:13px 30px; border-radius:16px; font-weight:900; font-size:17px; color:#fff; cursor:pointer;
+    border:3px solid var(--green-d); background:var(--green); box-shadow:0 5px 0 var(--green-d);}
+  .bigpill:active{transform:translateY(3px); box-shadow:0 2px 0 var(--green-d);}
+  .pill.gray2{border-color:#bbb; background:#e9e3d6; color:#8a7a60; box-shadow:0 3px 0 #bbb;}
+  .mineGrid{display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:4px 0 14px;}
+  .mineNode{aspect-ratio:1; border-radius:16px; background:#d9c6a8; border:3px solid #b5926a;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; font-size:34px;
+    cursor:pointer; box-shadow:0 5px 0 #b5926a; transition:transform .06s;}
+  .mineNode:active{transform:translateY(3px); box-shadow:0 2px 0 #b5926a;}
+  .mineNode.done{background:#eee; border-color:#d2d2d2; box-shadow:0 3px 0 #d2d2d2; cursor:default;}
+  .mineNode .hp{font-size:11px; color:#9a6a3a; margin-top:2px; letter-spacing:2px;}
 
   #toast{position:fixed; left:50%; bottom:calc(150px + var(--safeB)); transform:translateX(-50%) translateY(20px);
     background:rgba(50,35,20,.92); color:#fff; padding:10px 18px; border-radius:15px; font-weight:700;
@@ -229,6 +246,23 @@ const PANTRY={
   sugar:{name:"砂糖",emoji:"🍬",price:6},
   butter:{name:"黄油",emoji:"🧈",price:14},
 };
+// 鱼（钓鱼获得）rarity 之和≈1
+const FISH={
+  crucian:{name:"鲫鱼",emoji:"🐟",value:45,rarity:0.46},
+  carp:   {name:"鲤鱼",emoji:"🐠",value:80,rarity:0.30},
+  catfish:{name:"鲶鱼",emoji:"🐡",value:130,rarity:0.14},
+  koi:    {name:"锦鲤",emoji:"🎏",value:300,rarity:0.06},
+  boot:   {name:"破靴子",emoji:"🥾",value:3,rarity:0.04},
+};
+// 矿石（下矿获得）
+const ORES={
+  stone: {name:"石头",emoji:"🪨",value:6},
+  coal:  {name:"煤炭",emoji:"⚫",value:18},
+  copper:{name:"铜矿",emoji:"🟫",value:35},
+  iron:  {name:"铁矿",emoji:"⛓️",value:65},
+  goldore:{name:"金矿",emoji:"🟡",value:110},
+  gem:   {name:"宝石",emoji:"💎",value:260},
+};
 const DISHES={
   pancake:   {name:"草莓松饼",emoji:"🥞",recipe:{strawberry:2,egg:1,flour:1},price:120,fame:0},
   bakedpotato:{name:"黄油烤土豆",emoji:"🥔",recipe:{potato:2,butter:1},price:85,fame:0},
@@ -246,6 +280,9 @@ const DISHES={
   jelly:     {name:"霜莓果冻",emoji:"🍧",recipe:{winterberry:2,sugar:1},price:180,fame:260},
   shake:     {name:"霜莓奶昔",emoji:"🥤",recipe:{winterberry:2,milk:1},price:160,fame:200},
   lotusstew: {name:"雪莲炖盅",emoji:"🍵",recipe:{snowlotus:1,milk:1,sugar:1},price:220,fame:420},
+  grilledfish:{name:"香煎鱼",emoji:"🐟",recipe:{crucian:1,butter:1},price:150,fame:120},
+  fishsoup: {name:"鲜鱼汤",emoji:"🍜",recipe:{carp:1,radish:1},price:210,fame:260},
+  sushi:    {name:"招牌寿司",emoji:"🍣",recipe:{catfish:1,corn:1},price:300,fame:380},
   signature: {name:"招牌古法甜点",emoji:"🍮",recipe:{ancient:1,egg:1,milk:1,sugar:1},price:480,fame:600},
 };
 const AVATARS=["🐰","🐱","🐻","🐼","🦊","🐧","🐹","🐨","🐯","🐮","🐷","🐸"];
@@ -300,7 +337,10 @@ function vipChance(){return clamp(0.08+S.fame/8000,0.08,0.32);}
 function unlockedDishes(){return Object.keys(DISHES).filter(id=>S.fame>=DISHES[id].fame);}
 function dishAchievable(id){
   const r=DISHES[id].recipe;
-  for(const k in r){if(CROPS[k]){const c=CROPS[k];const inSeason=(c.season===-1||c.season===S.season);if(!inSeason&&!(S.inv[k]>0))return false;}}
+  for(const k in r){
+    if(CROPS[k]){const c=CROPS[k];const inSeason=(c.season===-1||c.season===S.season);if(!inSeason&&!(S.inv[k]>0))return false;}
+    else if(!PANTRY[k]){ if(!(S.inv[k]>0))return false; }   // 鱼/矿等：需已拥有
+  }
   return true;
 }
 function canCook(id){const r=DISHES[id].recipe;for(const k in r){if((S.inv[k]||0)<r[k])return false;}return true;}
@@ -333,8 +373,9 @@ const WORLD_W=14, WORLD_H=10;
 const FARM_X=4, FARM_Y=5;                       // 6x5 农田位于 x4..9, y5..9
 const DINER={x:2,y:2,w:3,h:2,doorX:3,doorY:4};  // 菜馆
 const SHOP={x:9,y:2,w:3,h:2,doorX:10,doorY:4};  // 商店
+const MINE={x:11,y:6,w:2,h:2,doorX:11,doorY:8}; // 矿洞
 const POND=[[1,7],[2,7],[1,8],[2,8]];
-const TREES=[[0,1],[0,6],[7,1],[13,1],[13,7],[12,3],[0,8]];
+const TREES=[[0,1],[0,6],[7,1],[13,1],[12,3],[0,8]];
 const CUSTOMER_SPOTS=[[1,4],[5,4],[2,5],[1,5],[1,6],[2,6]];
 let TERR=[], WALK=[];
 function tkey(x,y){return y*WORLD_W+x;}
@@ -346,10 +387,10 @@ function buildWorld(){
   for(let x=1;x<=11;x++)TERR[tkey(x,4)]="path";       // 横向小路
   for(let y=2;y<=4;y++)TERR[tkey(6,y)]="path";        // 竖向小路
   for(const[x,y]of POND){TERR[tkey(x,y)]="water";WALK[tkey(x,y)]=false;}
-  for(let dx=0;dx<DINER.w;dx++)for(let dy=0;dy<DINER.h;dy++)WALK[tkey(DINER.x+dx,DINER.y+dy)]=false;
-  for(let dx=0;dx<SHOP.w;dx++)for(let dy=0;dy<SHOP.h;dy++)WALK[tkey(SHOP.x+dx,SHOP.y+dy)]=false;
+  for(const b of [DINER,SHOP,MINE])for(let dx=0;dx<b.w;dx++)for(let dy=0;dy<b.h;dy++)WALK[tkey(b.x+dx,b.y+dy)]=false;
   TERR[tkey(DINER.doorX,DINER.doorY)]="path"; WALK[tkey(DINER.doorX,DINER.doorY)]=true;
   TERR[tkey(SHOP.doorX,SHOP.doorY)]="path"; WALK[tkey(SHOP.doorX,SHOP.doorY)]=true;
+  WALK[tkey(MINE.doorX,MINE.doorY)]=true;
   for(const[x,y]of TREES)WALK[tkey(x,y)]=false;
 }
 function isWalkable(x,y){if(x<0||y<0||x>=WORLD_W||y>=WORLD_H)return false;return WALK[tkey(x,y)];}
@@ -413,6 +454,7 @@ function draw(){
   const ents=[];
   ents.push({y:(DINER.y+DINER.h)*TILE, d:drawDiner});
   ents.push({y:(SHOP.y+SHOP.h)*TILE, d:drawShop});
+  ents.push({y:(MINE.y+MINE.h)*TILE, d:drawMine});
   for(const t of TREES)ents.push({y:(t[1]+1)*TILE, d:()=>drawTree(t[0],t[1],now)});
   for(let i=0;i<S.plots.length;i++){const p=S.plots[i];if(p.crop){const wx=FARM_X+i%GRID_W,wy=FARM_Y+Math.floor(i/GRID_W);ents.push({y:(wy+1)*TILE-2, d:()=>drawCrop(sx2(wx),sy2(wy),TILE,p,now)});}}
   const nc=Math.min(S.customers.length,CUSTOMER_SPOTS.length);
@@ -420,6 +462,8 @@ function draw(){
   ents.push({y:(player.row+1)*TILE, d:drawPlayer});
   ents.sort((a,b)=>a.y-b.y);
   for(const e of ents)e.d();
+  // 池塘「可钓鱼」漂浮提示
+  {const px=sx2(1.5),py=sy2(7)-TILE*0.25+Math.sin(now*2)*TILE*0.06;ctx.font=`${Math.round(TILE*0.42)}px serif`;ctx.textAlign="center";ctx.textBaseline="middle";ctx.globalAlpha=.92;ctx.fillText("🎣",px,py);ctx.globalAlpha=1;}
   if(inField(hover.x,hover.y)){ctx.strokeStyle="rgba(255,255,255,.85)";ctx.lineWidth=3;rr(sx2(hover.x)+3,sy2(hover.y)+3,TILE-6,TILE-6,TILE*0.2);ctx.stroke();}
   drawParticles();
 }
@@ -506,6 +550,21 @@ function drawShop(){
   ctx.font=`${Math.round(TILE*0.3)}px serif`;ctx.textAlign="center";ctx.textBaseline="middle";
   ctx.fillText("🧺",X+w*0.3,baseY-TILE*0.44);ctx.fillText("🍅",X+w*0.5,baseY-TILE*0.44);ctx.fillText("🌾",X+w*0.7,baseY-TILE*0.44);
   signBoard(X+w/2,awY-TILE*0.04,"🛒 商店");
+}
+function drawMine(){
+  const X=sx2(MINE.x),Y=sy2(MINE.y),w=MINE.w*TILE,h=MINE.h*TILE,baseY=Y+h;
+  fillRoundShadow(X+w*0.08,Y+h*0.2,w*0.84,h*0.8);
+  // 岩石山体
+  ctx.fillStyle="#8d8a86";ctx.beginPath();ctx.moveTo(X+w*0.05,baseY);ctx.lineTo(X+w*0.22,Y-TILE*0.3);ctx.lineTo(X+w*0.5,baseY-h*0.2);ctx.lineTo(X+w*0.8,Y-TILE*0.15);ctx.lineTo(X+w*0.95,baseY);ctx.closePath();ctx.fill();
+  ctx.fillStyle="#a3a09b";ctx.beginPath();ctx.moveTo(X+w*0.05,baseY);ctx.lineTo(X+w*0.22,Y-TILE*0.3);ctx.lineTo(X+w*0.4,baseY);ctx.closePath();ctx.fill();
+  ctx.fillStyle="rgba(255,255,255,.15)";ctx.beginPath();ctx.arc(X+w*0.7,Y+TILE*0.1,TILE*0.12,0,Math.PI*2);ctx.fill();
+  // 洞口
+  ctx.fillStyle="#2b2622";ctx.beginPath();ctx.moveTo(X+w*0.32,baseY);ctx.lineTo(X+w*0.32,baseY-h*0.45);ctx.arc(X+w*0.5,baseY-h*0.45,w*0.18,Math.PI,0);ctx.lineTo(X+w*0.68,baseY);ctx.closePath();ctx.fill();
+  // 木支撑
+  fillRR(X+w*0.3,baseY-h*0.5,TILE*0.1,h*0.5,2,"#9a6a3a");fillRR(X+w*0.6,baseY-h*0.5,TILE*0.1,h*0.5,2,"#9a6a3a");fillRR(X+w*0.28,baseY-h*0.52,w*0.44,TILE*0.12,2,"#9a6a3a");
+  // 矿车
+  ctx.font=`${Math.round(TILE*0.34)}px serif`;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText("⛏️",X+w*0.5,baseY-h*0.22);
+  signBoard(X+w/2,Y-TILE*0.15,"⛏️ 矿洞");
 }
 function drawTree(x,y,now){
   const cx=sx2(x)+TILE/2, by=sy2(y)+TILE*0.96, sway=Math.sin(now*1.2+x)*TILE*0.02;
@@ -686,7 +745,13 @@ function handleTap(x,y){
   }
   if(inBuilding(DINER,x,y)){goTo(DINER.doorX,DINER.doorY,()=>{dinerTab="orders";openDiner();});return;}
   if(inBuilding(SHOP,x,y)){goTo(SHOP.doorX,SHOP.doorY,()=>openShop());return;}
+  if(inBuilding(MINE,x,y)){goTo(MINE.doorX,MINE.doorY,()=>openMine());return;}
   for(let i=0;i<Math.min(S.customers.length,CUSTOMER_SPOTS.length);i++){const s=CUSTOMER_SPOTS[i];if(s[0]===x&&s[1]===y){goTo(DINER.doorX,DINER.doorY,()=>{dinerTab="orders";openDiner();});return;}}
+  if(TERR[tkey(x,y)]==="water"){                 // 池塘：去岸边钓鱼
+    const sp=nearestWalkable(x,y,Math.round(player.col),Math.round(player.row));
+    if(sp)goTo(sp[0],sp[1],()=>openFishing()); else toast("走不到水边呢～");
+    return;
+  }
   if(isWalkable(x,y))goTo(x,y,null);             // 空地：散步
 }
 function doTileAction(idx,tool){
@@ -760,6 +825,7 @@ function nextDay(){
     toast(`${SEASON_EMOJI[S.season]} 进入${SEASONS[S.season]}季！非当季作物已枯萎`);
   }
   S.energy=S.maxEnergy; S.todayEarn=0; S.todayServed=0; S.customers=genCustomers();
+  if(S.mine){S.mine.depth=1; S.mine.nodes=genNodes(1);}   // 矿洞每天重置到第一层
   save(); refresh();
 }
 
@@ -768,6 +834,8 @@ function itemDisplay(key){
   if(key.endsWith("_seed")){const c=CROPS[key.replace("_seed","")];return{emoji:c.emoji,name:c.name+"种子"};}
   if(CROPS[key])return{emoji:CROPS[key].emoji,name:CROPS[key].name};
   if(PANTRY[key])return{emoji:PANTRY[key].emoji,name:PANTRY[key].name};
+  if(FISH[key])return{emoji:FISH[key].emoji,name:FISH[key].name};
+  if(ORES[key])return{emoji:ORES[key].emoji,name:ORES[key].name};
   return{emoji:"❔",name:key};
 }
 function recipeStr(id){const r=DISHES[id].recipe;let s=[];for(const k in r){const d=itemDisplay(k);s.push(`${d.emoji}×${r[k]}`);}return s.join("  ");}
@@ -909,23 +977,25 @@ function openDiner(){
       });
     }
   }else{
-    const crops=Object.keys(S.inv).filter(k=>CROPS[k]&&S.inv[k]>0);
-    if(crops.length===0)body=`<div class="empty">没有可卖的作物～<br>留着食材做料理更赚哦</div>`;
+    const goods=Object.keys(S.inv).filter(k=>isGood(k)&&S.inv[k]>0);
+    if(goods.length===0)body=`<div class="empty">没有可卖的东西～<br>作物留着做料理，鱼/矿可直接卖钱</div>`;
     else{
-      body=`<div class="hint">散卖只值一点点，留着做料理招待客人更赚 💰</div>`;
-      for(const ck of crops){const c=CROPS[ck];
-        body+=`<div class="row"><div class="icon">${c.emoji}</div>
-          <div class="info"><div class="nm">${c.name} ×${S.inv[ck]}</div><div class="sub">散卖 🪙${c.sell}/个</div></div>
-          <div class="act"><div class="actrow"><button class="pill sm" data-sell1="${ck}">卖1</button><button class="pill sm red" data-sellall="${ck}">全卖</button></div></div></div>`;
+      body=`<div class="hint">作物留着做料理更赚；🐟鱼 / 🪨矿石 直接卖钱 💰</div>`;
+      for(const k of goods){const d=itemDisplay(k);
+        body+=`<div class="row"><div class="icon">${d.emoji}</div>
+          <div class="info"><div class="nm">${d.name} ×${S.inv[k]}</div><div class="sub">售价 🪙${goodValue(k)}/个</div></div>
+          <div class="act"><div class="actrow"><button class="pill sm" data-sell1="${k}">卖1</button><button class="pill sm red" data-sellall="${k}">全卖</button></div></div></div>`;
       }
     }
   }
   openPanel("🍳 退休菜馆",tabs+body);
   panel.querySelectorAll("[data-tab]").forEach(t=>t.onclick=()=>{dinerTab=t.dataset.tab;openDiner();});
   panel.querySelectorAll("[data-cook]").forEach(b=>b.onclick=()=>cook(+b.dataset.cook));
-  panel.querySelectorAll("[data-sell1]").forEach(b=>b.onclick=()=>sellCrop(b.dataset.sell1,1));
-  panel.querySelectorAll("[data-sellall]").forEach(b=>b.onclick=()=>sellCrop(b.dataset.sellall,S.inv[b.dataset.sellall]));
+  panel.querySelectorAll("[data-sell1]").forEach(b=>b.onclick=()=>sellGood(b.dataset.sell1,1));
+  panel.querySelectorAll("[data-sellall]").forEach(b=>b.onclick=()=>sellGood(b.dataset.sellall,S.inv[b.dataset.sellall]));
 }
+function isGood(k){return !!(CROPS[k]||FISH[k]||ORES[k]);}
+function goodValue(k){return CROPS[k]?CROPS[k].sell:FISH[k]?FISH[k].value:ORES[k]?ORES[k].value:0;}
 function cook(i){
   const cust=S.customers[i]; if(!cust)return;
   if(!canCook(cust.dish)){toast("食材不够呢～");return;}
@@ -938,10 +1008,10 @@ function cook(i){
   for(const id in DISHES){if(before<DISHES[id].fame&&S.fame>=DISHES[id].fame)setTimeout(()=>toast(`🎉 新菜谱解锁：${DISHES[id].emoji}${DISHES[id].name}`),700);}
   save();refresh();reopenScroll(openDiner);
 }
-function sellCrop(ck,n){
-  n=Math.min(n,S.inv[ck]||0);if(n<=0)return;
-  const gain=CROPS[ck].sell*n; S.inv[ck]-=n; if(S.inv[ck]<=0)delete S.inv[ck];
-  S.gold+=gain; toast(`卖出 ${CROPS[ck].name}×${n}，+🪙${gain}`); save();refresh();reopenScroll(openDiner);
+function sellGood(k,n){
+  n=Math.min(n,S.inv[k]||0);if(n<=0)return;
+  const gain=goodValue(k)*n; S.inv[k]-=n; if(S.inv[k]<=0)delete S.inv[k];
+  S.gold+=gain; toast(`卖出 ${itemDisplay(k).name}×${n}，+🪙${gain}`); save();refresh();reopenScroll(openDiner);
 }
 
 // 图鉴
@@ -964,20 +1034,122 @@ function openBook(){
 // 背包
 function openBag(){
   const keys=Object.keys(S.inv).filter(k=>S.inv[k]>0);
-  let seeds="",crops="",pan="";
+  let seeds="",crops="",pan="",fish="",ore="";
   for(const k of keys){
     if(k.endsWith("_seed")){const c=CROPS[k.replace("_seed","")];seeds+=bagRow(c.emoji,c.name+"种子",S.inv[k]);}
     else if(CROPS[k])crops+=bagRow(CROPS[k].emoji,CROPS[k].name,S.inv[k]);
     else if(PANTRY[k])pan+=bagRow(PANTRY[k].emoji,PANTRY[k].name,S.inv[k]);
+    else if(FISH[k])fish+=bagRow(FISH[k].emoji,FISH[k].name,S.inv[k]);
+    else if(ORES[k])ore+=bagRow(ORES[k].emoji,ORES[k].name,S.inv[k]);
   }
   let html="";
   if(seeds)html+=`<div class="sectit">🌱 种子</div>${seeds}`;
   if(crops)html+=`<div class="sectit">🧺 收获的菜</div>${crops}`;
   if(pan)html+=`<div class="sectit">🍳 杂货食材</div>${pan}`;
+  if(fish)html+=`<div class="sectit">🎣 渔获</div>${fish}`;
+  if(ore)html+=`<div class="sectit">⛏️ 矿石</div>${ore}`;
   if(!html)html=`<div class="empty">背包是空的～</div>`;
   openPanel("🎒 背包",html);
 }
 function bagRow(em,nm,q){return `<div class="row"><div class="icon">${em}</div><div class="info"><div class="nm">${nm}</div></div><div class="act"><div class="chip" style="border-width:2px;padding:4px 10px;">×${q}</div></div></div>`;}
+
+// ========== 🎣 钓鱼 ==========
+let fishState=null, fishAnim=null;
+function openFishing(){
+  if(S.energy<2){toast("体力不够钓鱼了，歇会儿吧 😴");return;}
+  S.energy-=2; refresh();
+  const zw=0.22+Math.random()*0.16;                      // 命中区宽度（越窄越刺激）
+  fishState={phase:"cast",marker:0,zoneStart:0.1+Math.random()*(0.8-zw),zoneW:zw,fish:null,timer:null};
+  renderFishing();
+  fishState.timer=setTimeout(()=>{if(fishState&&fishState.phase==="cast"){fishState.phase="reel";renderFishing();startFishAnim();}},1000+Math.random()*2200);
+}
+function renderFishing(){
+  let body;
+  if(fishState.phase==="cast"){
+    body=`<div class="fishwrap"><div class="fishbig">🎣</div><div class="fishmsg">抛竿中…静静等鱼儿上钩</div><div class="fishhint">🫧 水面静悄悄…</div></div>`;
+  }else if(fishState.phase==="reel"){
+    body=`<div class="fishwrap"><div class="fishbig">❗</div><div class="fishmsg">上钩啦！指针滑到<span style="color:#2e8b3d">绿色区</span>时点【收杆】</div>
+      <canvas id="fishcv" width="300" height="44"></canvas>
+      <button class="bigpill" id="reelBtn">🎣 收杆！</button></div>`;
+  }else{
+    const f=fishState.fish;
+    body=f?`<div class="fishwrap"><div class="fishbig">${f.emoji}</div><div class="fishmsg">钓到了 <b>${f.name}</b>！价值 🪙${f.value}<br><span class="fishhint">（在「🍳菜馆 → 卖余货」可卖出）</span></div>
+      <div class="actrow" style="justify-content:center"><button class="bigpill" id="againBtn">再钓一次</button><button class="pill gray2" id="closeFish">收工</button></div></div>`
+      :`<div class="fishwrap"><div class="fishbig">💨</div><div class="fishmsg">哎呀…鱼跑啦！</div>
+      <div class="actrow" style="justify-content:center"><button class="bigpill" id="againBtn">再试一次</button><button class="pill gray2" id="closeFish">收工</button></div></div>`;
+  }
+  openPanel("🎣 钓鱼",body);
+  panel.querySelector(".pclose").onclick=closeFishing;
+  const rb=document.getElementById("reelBtn"); if(rb)rb.onclick=reelTap;
+  const ab=document.getElementById("againBtn"); if(ab)ab.onclick=()=>{fishState=null;openFishing();};
+  const cf=document.getElementById("closeFish"); if(cf)cf.onclick=closeFishing;
+}
+function startFishAnim(){
+  const c2=document.getElementById("fishcv"); if(!c2)return; const g=c2.getContext("2d"); let t=0;
+  function fr(){
+    if(!fishState||fishState.phase!=="reel"){return;}
+    t+=0.028; fishState.marker=Math.sin(t*3)*0.5+0.5;
+    const W=c2.width,H=c2.height; g.clearRect(0,0,W,H);
+    g.fillStyle="#e8d9b8"; g.fillRect(0,H*0.32,W,H*0.36);
+    g.fillStyle="#a6e29b"; g.fillRect(fishState.zoneStart*W,H*0.32,fishState.zoneW*W,H*0.36);
+    const mx=fishState.marker*W; g.fillStyle="#ef476f"; g.fillRect(mx-3,H*0.12,6,H*0.76);
+    fishAnim=requestAnimationFrame(fr);
+  }
+  fr();
+}
+function reelTap(){
+  if(!fishState||fishState.phase!=="reel")return;
+  cancelAnimationFrame(fishAnim);
+  const m=fishState.marker, hit=m>=fishState.zoneStart&&m<=fishState.zoneStart+fishState.zoneW;
+  if(hit){const f=rollFish(); S.inv[f.key]=(S.inv[f.key]||0)+1; fishState.fish=f; toast(`钓到 ${f.emoji}${f.name}！`);}
+  else fishState.fish=null;
+  fishState.phase="done"; save(); refresh(); renderFishing();
+}
+function rollFish(){
+  let r=Math.random(),acc=0;
+  for(const k in FISH){acc+=FISH[k].rarity; if(r<=acc)return {key:k,...FISH[k]};}
+  const k=Object.keys(FISH)[0]; return {key:k,...FISH[k]};
+}
+function closeFishing(){if(fishState&&fishState.timer)clearTimeout(fishState.timer);cancelAnimationFrame(fishAnim);fishState=null;closePanel();}
+
+// ========== ⛏️ 下矿 ==========
+function genNodes(depth){const a=[];for(let i=0;i<6;i++)a.push({hp:1+(Math.random()<0.45?1:0),got:false});return a;}
+function openMine(){
+  if(!S.mine)S.mine={depth:1,nodes:genNodes(1)};
+  if(!S.mine.nodes||!S.mine.nodes.length)S.mine.nodes=genNodes(S.mine.depth);
+  renderMine();
+}
+function renderMine(){
+  let grid="";
+  S.mine.nodes.forEach((n,i)=>{
+    grid+=n.got?`<div class="mineNode done">✅</div>`
+      :`<div class="mineNode" data-mine="${i}">${n.hp>=2?"🪨":"🪙"}<div class="hp">${"◆".repeat(n.hp)}</div></div>`;
+  });
+  const body=`<div class="hint">⛏️ 第 <b>${S.mine.depth}</b> 层 · 体力 ${S.energy} · 点矿石开采，越往深越值钱 💎</div>
+    <div class="mineGrid">${grid}</div>
+    <button class="bigpill" id="deeper">⬇️ 深入一层（-3 体力）</button>`;
+  openPanel("⛏️ 矿洞",body);
+  panel.querySelectorAll("[data-mine]").forEach(b=>b.onclick=()=>mineTap(+b.dataset.mine));
+  document.getElementById("deeper").onclick=goDeeper;
+}
+function mineTap(i){
+  const n=S.mine.nodes[i]; if(!n||n.got)return;
+  if(S.energy<1){toast("体力见底了，回去睡一觉 😴");return;}
+  S.energy--; n.hp--;
+  if(n.hp<=0){n.got=true; const o=rollOre(S.mine.depth); S.inv[o.key]=(S.inv[o.key]||0)+1; toast(`挖到 ${o.emoji}${o.name}（🪙${o.value}）！`);}
+  save(); refresh(); renderMine();
+}
+function goDeeper(){
+  if(S.energy<3){toast("体力不够下矿了 😴");return;}
+  S.energy-=3; S.mine.depth++; S.mine.nodes=genNodes(S.mine.depth);
+  toast(`深入第 ${S.mine.depth} 层！矿藏更丰厚了`); save(); refresh(); renderMine();
+}
+function rollOre(depth){
+  const tbl=[["stone",Math.max(2,9-depth)],["coal",5],["copper",3+depth*0.5],["iron",1+depth*0.6],["goldore",depth*0.45],["gem",Math.max(0,depth-2)*0.4]];
+  let tot=0; for(const t of tbl)tot+=t[1]; let r=Math.random()*tot,acc=0;
+  for(const t of tbl){acc+=t[1]; if(r<=acc)return {key:t[0],...ORES[t[0]]};}
+  return {key:"stone",...ORES.stone};
+}
 
 // 按钮
 document.getElementById("btnShop").onclick=openShop;
