@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>晴野小馆</title>
+<style>
+  :root{
+    --cream:#fff7e6; --panel:#fffdf5; --ink:#5a3e2b; --ink2:#8a6f57;
+    --line:#e7cfa3; --line2:#d4a373;
+    --green:#5fb96b; --green-d:#3e9e54;
+    --yellow:#ffd25a; --orange:#ff9f43; --red:#ff6b81; --blue:#5ab0e0; --pink:#ff8fab;
+    --shadow:0 4px 0 rgba(0,0,0,.12), 0 8px 18px rgba(120,80,40,.18);
+    --safeT:env(safe-area-inset-top,0px); --safeB:env(safe-area-inset-bottom,0px);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent; -webkit-touch-callout:none;}
+  html,body{margin:0; padding:0; width:100%; height:100%; overflow:hidden; position:fixed;
+    overscroll-behavior:none; touch-action:manipulation;
+    font-family:"PingFang SC","Segoe UI Rounded","SF Pro Rounded","Microsoft YaHei",system-ui,sans-serif;
+    color:var(--ink); user-select:none; -webkit-user-select:none;
+    background:linear-gradient(180deg,#aee7f0 0%,#cdeFd4 55%,#bfe7b0 100%);}
+  #game{position:relative; width:100%; height:100%; display:flex; flex-direction:column;
+    padding-top:var(--safeT); padding-bottom:var(--safeB);}
+
+  /* ===== 顶部 HUD ===== */
+  #hud{display:flex; gap:6px; align-items:center; padding:6px 8px; flex-wrap:wrap; z-index:5;}
+  .chip{background:var(--panel); border:3px solid var(--line2); border-radius:14px;
+    padding:5px 10px; font-weight:800; display:flex; align-items:center; gap:5px;
+    box-shadow:0 3px 0 rgba(0,0,0,.10); font-size:14px; white-space:nowrap;}
+  .chip .ic{font-size:16px;}
+  .chip.gold{color:#b8860b;} .chip.fame{color:#e0568b;}
+  #energyWrap{flex:1; min-width:90px; max-width:240px; background:var(--panel);
+    border:3px solid var(--line2); border-radius:14px; padding:3px 8px 4px; box-shadow:0 3px 0 rgba(0,0,0,.10);}
+  #energyBar{height:12px; border-radius:8px; background:#f0e0c0; overflow:hidden;}
+  #energyFill{height:100%; width:100%; border-radius:8px;
+    background:linear-gradient(90deg,#ffd25a,#ff9f43); transition:width .3s;}
+  #energyWrap .lbl{font-size:10px; font-weight:800; color:var(--ink2);}
+
+  /* ===== 画布 ===== */
+  #stage{flex:1; position:relative; display:flex; align-items:center; justify-content:center; min-height:0;}
+  canvas{border-radius:22px; box-shadow:var(--shadow); touch-action:none;}
+  #ticker{position:absolute; top:6px; left:50%; transform:translateX(-50%);
+    background:rgba(255,253,245,.94); border:3px solid var(--pink); border-radius:18px;
+    padding:5px 14px; font-weight:800; font-size:13px; color:#c0397a; box-shadow:0 3px 0 rgba(0,0,0,.1);
+    max-width:92%; text-align:center;}
+
+  /* ===== 工具栏 ===== */
+  #toolbar{display:flex; gap:7px; justify-content:center; padding:6px; flex-wrap:wrap; z-index:5;}
+  .tool{width:58px; height:58px; border-radius:16px; background:var(--panel);
+    border:3px solid var(--line2); box-shadow:0 4px 0 rgba(0,0,0,.12);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer;
+    font-size:22px; transition:transform .08s, box-shadow .08s; gap:1px;}
+  .tool .nm{font-size:10px; font-weight:800; color:var(--ink2);}
+  .tool:active{transform:translateY(3px); box-shadow:0 1px 0 rgba(0,0,0,.12);}
+  .tool.sel{border-color:var(--green-d); background:#eafbe7; transform:translateY(-2px); box-shadow:0 6px 0 var(--green-d);}
+  .menu{display:flex; gap:7px; justify-content:center; padding:0 6px 8px; flex-wrap:wrap; z-index:5;}
+  .mbtn{position:relative; padding:9px 13px; border-radius:15px; background:var(--panel); border:3px solid var(--line2);
+    box-shadow:0 4px 0 rgba(0,0,0,.12); font-weight:800; font-size:14px; cursor:pointer; color:var(--ink);
+    display:flex; align-items:center; gap:5px; transition:transform .08s;}
+  .mbtn:active{transform:translateY(3px); box-shadow:0 1px 0 rgba(0,0,0,.12);}
+  .mbtn.sleep{background:linear-gradient(180deg,#7ec8e3,#5ab0e0); color:#fff; border-color:#3d97cc; box-shadow:0 4px 0 #3d97cc;}
+  .mbtn .badge{position:absolute; top:-8px; right:-6px; background:var(--red); color:#fff; font-size:11px;
+    min-width:20px; height:20px; border-radius:10px; display:flex; align-items:center; justify-content:center;
+    border:2px solid #fff; padding:0 4px; box-shadow:0 2px 4px rgba(0,0,0,.2);}
+
+  /* ===== 弹窗 ===== */
+  #overlay{position:fixed; inset:0; background:rgba(60,40,20,.45); display:none;
+    align-items:center; justify-content:center; z-index:20; padding:14px;
+    padding-top:calc(14px + var(--safeT)); padding-bottom:calc(14px + var(--safeB));}
+  #overlay.on{display:flex;}
+  .panel{background:var(--cream); border:5px solid var(--line2); border-radius:24px;
+    width:min(540px,96%); max-height:90%; overflow:hidden; display:flex; flex-direction:column;
+    box-shadow:0 10px 0 rgba(0,0,0,.15), 0 20px 40px rgba(80,50,20,.35);}
+  .ptitle{padding:13px 16px; font-size:19px; font-weight:900; display:flex; justify-content:space-between;
+    align-items:center; background:linear-gradient(180deg,#ffe8a8,#ffd25a); color:#7a5418; border-bottom:4px solid var(--line2);}
+  .pclose{width:34px; height:34px; border-radius:11px; background:#fff; border:3px solid var(--line2);
+    font-weight:900; cursor:pointer; line-height:1; box-shadow:0 3px 0 rgba(0,0,0,.12); color:var(--ink); font-size:16px;}
+  .pbody{padding:12px; overflow-y:auto; -webkit-overflow-scrolling:touch;}
+  .row{display:flex; align-items:center; gap:10px; background:var(--panel); border:3px solid var(--line);
+    border-radius:15px; padding:10px 11px; margin-bottom:8px;}
+  .row .icon{width:46px; height:46px; flex:none; border-radius:12px; display:flex; align-items:center;
+    justify-content:center; font-size:26px; background:#f6ecd6; border:2px solid var(--line);}
+  .row .info{flex:1; min-width:0;}
+  .row .nm{font-weight:800; font-size:15px;}
+  .row .sub{font-size:12px; color:var(--ink2); margin-top:2px; line-height:1.4;}
+  .row .act{display:flex; flex-direction:column; gap:5px; align-items:flex-end;}
+  .pill{padding:9px 14px; border-radius:12px; font-weight:800; font-size:14px; cursor:pointer;
+    border:3px solid var(--green-d); background:var(--green); color:#fff; box-shadow:0 3px 0 var(--green-d); white-space:nowrap;}
+  .pill:active{transform:translateY(2px); box-shadow:0 1px 0 var(--green-d);}
+  .pill.buy{border-color:#d4900a; background:var(--yellow); color:#7a5418; box-shadow:0 3px 0 #d4900a;}
+  .pill.gray{border-color:#bbb; background:#e2e2e2; color:#999; box-shadow:0 3px 0 #bbb; cursor:default;}
+  .pill.red{border-color:#d6435a; background:var(--red); color:#fff; box-shadow:0 3px 0 #d6435a;}
+  .vip{display:inline-block; font-size:10px; font-weight:900; padding:1px 6px; border-radius:7px;
+    background:linear-gradient(90deg,#ffd25a,#ff9f43); color:#7a3a00; margin-left:5px; vertical-align:middle;}
+  .tag{display:inline-block; font-size:11px; font-weight:800; padding:2px 7px; border-radius:8px;
+    background:#f0e0c0; color:#8a6f57; margin-left:4px;}
+  .tag.lock{background:#eadfce; color:#a08a6a;}
+  .hint{font-size:12px; color:var(--ink2); text-align:center; margin:2px 0 12px; line-height:1.5;}
+  .empty{text-align:center; color:var(--ink2); padding:30px 10px; font-size:14px; line-height:1.7;}
+  .tabs{display:flex; gap:6px; margin-bottom:10px;}
+  .tab{flex:1; text-align:center; padding:9px; border-radius:12px; font-weight:800; font-size:13px;
+    background:#f0e0c0; color:#8a6f57; cursor:pointer; border:3px solid var(--line);}
+  .tab.on{background:var(--green); color:#fff; border-color:var(--green-d);}
+  .sectit{font-weight:900; margin:6px 2px 8px; color:#7a5418; font-size:14px;}
+
+  #toast{position:fixed; left:50%; bottom:calc(150px + var(--safeB)); transform:translateX(-50%) translateY(20px);
+    background:rgba(50,35,20,.92); color:#fff; padding:10px 18px; border-radius:15px; font-weight:700;
+    font-size:14px; opacity:0; transition:.3s; z-index:30; pointer-events:none; box-shadow:0 4px 12px rgba(0,0,0,.3); max-width:80%; text-align:center;}
+  #toast.on{opacity:1; transform:translateX(-50%) translateY(0);}
+
+  #fade{position:fixed; inset:0; background:#1a2a3a; color:#fff; display:none; z-index:40;
+    flex-direction:column; align-items:center; justify-content:center; gap:12px; font-size:20px; font-weight:800;}
+  #fade.on{display:flex; animation:fadeIn .5s;}
+  @keyframes fadeIn{from{opacity:0;}to{opacity:1;}}
+  .moon{font-size:56px; animation:bob 2s ease-in-out infinite;}
+  @keyframes bob{0%,100%{transform:translateY(0);}50%{transform:translateY(-12px);}}
+  #summary{background:var(--cream); border:4px solid var(--line2); border-radius:18px; padding:16px 22px;
+    color:var(--ink); font-size:15px; line-height:1.9; min-width:200px; text-align:center;}
+
+  #intro{position:fixed; inset:0; z-index:50; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; gap:16px; padding:24px; text-align:center;
+    background:linear-gradient(180deg,#aee7f0,#cdeFd4 60%,#bfe7b0);}
+  #intro h1{font-size:38px; margin:0; color:#3e7d4a; text-shadow:3px 3px 0 #fff, 0 6px 0 rgba(0,0,0,.1);}
+  #intro p{max-width:420px; font-size:15px; line-height:1.7; color:var(--ink); background:rgba(255,253,245,.85);
+    padding:16px 20px; border-radius:18px; border:3px solid var(--line2);}
+  #startBtn{padding:15px 38px; font-size:19px; font-weight:900; color:#fff; cursor:pointer;
+    background:linear-gradient(180deg,#6fce7b,#4caf5d); border:4px solid #3e9e54; border-radius:22px;
+    box-shadow:0 6px 0 #3e9e54; transition:transform .1s;}
+  #startBtn:active{transform:translateY(4px); box-shadow:0 2px 0 #3e9e54;}
+  .seedlogo{font-size:72px; animation:bob 2.5s ease-in-out infinite;}
+  #resetBtn{margin-top:4px; font-size:12px; color:#6b7d8a; background:none; border:none; cursor:pointer; text-decoration:underline;}
+</style>
+</head>
+<body>
+<div id="game">
+  <div id="hud">
+    <div class="chip" id="dateChip"><span class="ic">🌸</span><span id="dateTxt">春 · 第1天</span></div>
+    <div class="chip gold"><span class="ic">🪙</span><span id="goldTxt">0</span></div>
+    <div class="chip fame"><span class="ic">⭐</span><span id="fameTxt">0</span></div>
+    <div id="energyWrap"><div class="lbl">体力</div><div id="energyBar"><div id="energyFill"></div></div></div>
+  </div>
+
+  <div id="stage">
+    <canvas id="cv"></canvas>
+    <div id="ticker">小馆开张啦～</div>
+  </div>
+
+  <div id="toolbar"></div>
+
+  <div class="menu">
+    <div class="mbtn" id="btnShop">🛒 商店</div>
+    <div class="mbtn" id="btnDiner">🍳 小馆<span class="badge" id="dinerBadge" style="display:none">0</span></div>
+    <div class="mbtn" id="btnBook">📖 图鉴</div>
+    <div class="mbtn" id="btnBag">🎒 背包</div>
+    <div class="mbtn sleep" id="btnSleep">🛏️ 打烊</div>
+  </div>
+
+  <div id="toast"></div>
+  <div id="fade"><div class="moon">🌙</div><div id="summary"></div></div>
+</div>
+
+<div id="overlay"><div class="panel" id="panel"></div></div>
+
+<div id="intro">
+  <div class="seedlogo">🍳</div>
+  <h1>晴野小馆</h1>
+  <p>欢迎经营你的乡间小馆 🏡<br>
+  种菜收食材 🌱，来店的小动物会<b>点单</b> 🐰🐱🐻，<br>
+  照着<b>配方</b>下厨做料理招待他们，赚钱又涨<b>人气</b> ⭐<br>
+  人气越高，新菜谱越多、客人出手越阔～<br>
+  慢慢做，提前体验退休生活 ☕</p>
+  <button id="startBtn">开始营业</button>
+  <button id="resetBtn">（重新开档）</button>
+</div>
+
+<script>
+"use strict";
+/* ============================================================
+   晴野小馆 —— 种菜 + 点单经营（任天堂清新风格 / 触屏优先）
+   循环：种菜收食材 → 客人点单 → 按配方下厨 → 赚钱涨人气 → 解锁新菜
+   ============================================================ */
+
+const SEASONS=["春","夏","秋","冬"];
+const SEASON_EMOJI=["🌸","☀️","🍁","❄️"];
+const SEASON_DAYS=8;
+const GRID_W=6, GRID_H=5;
+const START_PLOTS=12;
+
+// 作物：season 所属季(-1全季), grow 成长天, seed 种价, sell 散卖价, color, regrow 反复结果间隔(0一次性)
+const CROPS={
+  strawberry:{name:"草莓",emoji:"🍓",season:0,grow:4,seed:25,sell:30,color:"#ff5d73",regrow:0},
+  potato:    {name:"土豆",emoji:"🥔",season:0,grow:3,seed:18,sell:22,color:"#d9a566",regrow:0},
+  radish:    {name:"萝卜",emoji:"🥬",season:0,grow:4,seed:22,sell:28,color:"#9fe08a",regrow:0},
+  tomato:    {name:"番茄",emoji:"🍅",season:1,grow:4,seed:28,sell:32,color:"#ff5238",regrow:2},
+  blueberry: {name:"蓝莓",emoji:"🫐",season:1,grow:5,seed:40,sell:26,color:"#5a7de0",regrow:3},
+  corn:      {name:"玉米",emoji:"🌽",season:1,grow:5,seed:35,sell:38,color:"#ffd23f",regrow:3},
+  pumpkin:   {name:"南瓜",emoji:"🎃",season:2,grow:6,seed:55,sell:70,color:"#ff8f1f",regrow:0},
+  grape:     {name:"葡萄",emoji:"🍇",season:2,grow:5,seed:42,sell:44,color:"#9b5de5",regrow:3},
+  yam:       {name:"红薯",emoji:"🍠",season:2,grow:4,seed:30,sell:36,color:"#c97b9b",regrow:0},
+  winterberry:{name:"霜莓",emoji:"🍒",season:3,grow:5,seed:48,sell:50,color:"#e0405e",regrow:0},
+  snowlotus: {name:"雪莲",emoji:"🪷",season:3,grow:6,seed:60,sell:66,color:"#cfe8ff",regrow:0},
+  ancient:   {name:"古老果实",emoji:"🟣",season:-1,grow:8,seed:800,sell:120,color:"#8a5cd6",regrow:3},
+};
+
+// 杂货食材（商店常售）
+const PANTRY={
+  flour:{name:"面粉",emoji:"🌾",price:8},
+  egg:  {name:"鸡蛋",emoji:"🥚",price:10},
+  milk: {name:"牛奶",emoji:"🥛",price:12},
+  sugar:{name:"砂糖",emoji:"🍬",price:6},
+  butter:{name:"黄油",emoji:"🧈",price:14},
+};
+
+// 菜谱：recipe 食材需求(键=作物或杂货), price 售价, fame 解锁所需人气
+const DISHES={
+  pancake:   {name:"草莓松饼",emoji:"🥞",recipe:{strawberry:2,egg:1,flour:1},price:120,fame:0},
+  bakedpotato:{name:"黄油烤土豆",emoji:"🥔",recipe:{potato:2,butter:1},price:85,fame:0},
+  radishsoup:{name:"萝卜浓汤",emoji:"🍲",recipe:{radish:2,milk:1},price:95,fame:60},
+  salad:     {name:"田园沙拉",emoji:"🥗",recipe:{radish:1,potato:1,strawberry:1},price:105,fame:120},
+  daifuku:   {name:"草莓大福",emoji:"🍡",recipe:{strawberry:3,sugar:1},price:140,fame:200},
+  tomatosoup:{name:"番茄浓汤",emoji:"🍅",recipe:{tomato:3},price:100,fame:80},
+  toast:     {name:"蓝莓酱吐司",emoji:"🍞",recipe:{blueberry:2,sugar:1,flour:1},price:130,fame:120},
+  cornbutter:{name:"奶油玉米",emoji:"🌽",recipe:{corn:2,butter:1,milk:1},price:155,fame:160},
+  muffin:    {name:"蓝莓马芬",emoji:"🧁",recipe:{blueberry:3,flour:1,egg:1},price:170,fame:240},
+  pumpkinpie:{name:"南瓜派",emoji:"🥧",recipe:{pumpkin:1,flour:1,egg:1,butter:1},price:250,fame:300},
+  grapetart: {name:"葡萄果挞",emoji:"🍰",recipe:{grape:4,flour:1,sugar:1},price:230,fame:340},
+  honeyyam:  {name:"蜜烤红薯",emoji:"🍠",recipe:{yam:2,sugar:1},price:115,fame:160},
+  pumpkinsoup:{name:"南瓜浓汤",emoji:"🥣",recipe:{pumpkin:1,milk:1},price:160,fame:280},
+  jelly:     {name:"霜莓果冻",emoji:"🍧",recipe:{winterberry:2,sugar:1},price:180,fame:260},
+  shake:     {name:"霜莓奶昔",emoji:"🥤",recipe:{winterberry:2,milk:1},price:160,fame:200},
+  lotusstew: {name:"雪莲炖盅",emoji:"🍵",recipe:{snowlotus:1,milk:1,sugar:1},price:220,fame:420},
+  signature: {name:"招牌古法甜点",emoji:"🍮",recipe:{ancient:1,egg:1,milk:1,sugar:1},price:480,fame:600},
+};
+
+const AVATARS=["🐰","🐱","🐻","🐼","🦊","🐧","🐹","🐨","🐯","🐮","🐷","🐸"];
+
+// ---------- 状态 ----------
+let S=null;
+function newGame(){
+  const g={
+    day:1, season:0, year:1,
+    gold:500, fame:0, energy:100, maxEnergy:100,
+    plots:Array.from({length:GRID_W*GRID_H},(_,i)=>({unlocked:i<START_PLOTS,tilled:false,crop:null,growth:0,watered:false,ready:false})),
+    inv:{strawberry_seed:6, strawberry:4, egg:2, flour:2},
+    tool:"hoe", plantSeed:"strawberry", extraLandBought:0,
+    customers:[], todayEarn:0, todayServed:0,
+  };
+  S=g; S.customers=genCustomers();
+  return g;
+}
+function rnd(a,b){return a+Math.random()*(b-a);}
+function ri(a,b){return Math.floor(rnd(a,b+1));}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function pick(arr){return arr[Math.floor(Math.random()*arr.length)];}
+
+// ---------- 存档 ----------
+const SAVE_KEY="qingye_diner_v1";
+function save(){try{localStorage.setItem(SAVE_KEY,JSON.stringify(S));}catch(e){}}
+function load(){try{const d=localStorage.getItem(SAVE_KEY);return d?JSON.parse(d):null;}catch(e){return null;}}
+function hasSave(){try{return !!localStorage.getItem(SAVE_KEY);}catch(e){return false;}}
+
+// ---------- 客人生成 ----------
+function customersPerDay(){return clamp(3+Math.floor(S.fame/300),3,7);}
+function vipChance(){return clamp(0.08+S.fame/8000,0.08,0.32);}
+function unlockedDishes(){return Object.keys(DISHES).filter(id=>S.fame>=DISHES[id].fame);}
+function dishAchievable(id){
+  // 所有作物食材当季可种 或 已在背包；杂货随时可买
+  const r=DISHES[id].recipe;
+  for(const k in r){
+    if(CROPS[k]){ const c=CROPS[k];
+      const inSeason=(c.season===-1||c.season===S.season);
+      const owned=(S.inv[k]||0)>0;
+      if(!inSeason && !owned) return false;
+    }
+  }
+  return true;
+}
+function genCustomers(){
+  const n=customersPerDay();
+  let pool=unlockedDishes().filter(dishAchievable);
+  if(pool.length===0) pool=unlockedDishes();
+  const list=[];
+  for(let i=0;i<n;i++){
+    const dish=pick(pool);
+    const vip=Math.random()<vipChance();
+    const base=DISHES[dish].price;
+    const tip=Math.round(base*rnd(0.12,0.35));
+    list.push({avatar:pick(AVATARS), dish, vip, tip, pay:(vip?base*2:base)+tip});
+  }
+  return list;
+}
+
+// ---------- 画布 ----------
+const cv=document.getElementById("cv"), ctx=cv.getContext("2d");
+let TILE=70, OX=0, OY=0;
+function resize(){
+  const stage=document.getElementById("stage");
+  const availW=stage.clientWidth-16, availH=stage.clientHeight-16;
+  const t=Math.floor(Math.min(availW/GRID_W, availH/(GRID_H+0.55)));
+  TILE=clamp(t,40,92);
+  cv.width=GRID_W*TILE; cv.height=GRID_H*TILE+Math.round(TILE*0.45);
+  OX=0; OY=Math.round(TILE*0.45);
+  draw();
+}
+window.addEventListener("resize",resize);
+
+function rr(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
+
+let hover=-1, t0=Date.now();
+function draw(){
+  if(!S) return;
+  const W=cv.width,H=cv.height;
+  ctx.clearRect(0,0,W,H);
+  let g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,"#bfe9c4"); g.addColorStop(1,"#9bd99f");
+  ctx.fillStyle=g; rr(0,0,W,H,22); ctx.fill();
+  const now=(Date.now()-t0)/1000;
+  for(let j=0;j<GRID_H;j++)for(let i=0;i<GRID_W;i++){
+    const idx=j*GRID_W+i,p=S.plots[idx];
+    const x=OX+i*TILE,y=OY+j*TILE,pad=3;
+    drawTile(x+pad,y+pad,TILE-pad*2,p,idx===hover,now);
+  }
+}
+function drawTile(x,y,s,p,hov,now){
+  const r=s*0.22;
+  if(!p.unlocked){
+    ctx.fillStyle="#c9b79c"; rr(x,y,s,s,r); ctx.fill();
+    ctx.globalAlpha=.5; ctx.font=`${s*0.4}px serif`; ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillText("🔒",x+s/2,y+s/2); ctx.globalAlpha=1; return;
+  }
+  ctx.save(); if(hov)ctx.translate(0,-3);
+  if(!p.tilled){
+    let g=ctx.createLinearGradient(x,y,x,y+s); g.addColorStop(0,"#8ed98f"); g.addColorStop(1,"#6cc06f");
+    ctx.fillStyle=g; rr(x,y,s,s,r); ctx.fill();
+    ctx.fillStyle="rgba(255,255,255,.18)"; ctx.fillRect(x+s*0.25,y+s*0.3,2,s*0.12); ctx.fillRect(x+s*0.6,y+s*0.5,2,s*0.1);
+  } else {
+    ctx.fillStyle=p.watered?"#9c6644":"#c08552"; rr(x,y,s,s,r); ctx.fill();
+    ctx.strokeStyle="rgba(0,0,0,.08)"; ctx.lineWidth=2;
+    for(let k=1;k<3;k++){ctx.beginPath();ctx.moveTo(x+4,y+s*k/3);ctx.lineTo(x+s-4,y+s*k/3);ctx.stroke();}
+    if(p.watered){ctx.fillStyle="rgba(90,176,224,.22)"; rr(x,y,s,s,r); ctx.fill();}
+    if(p.crop)drawCrop(x,y,s,p,now);
+  }
+  if(hov){ctx.strokeStyle="rgba(255,255,255,.9)"; ctx.lineWidth=3; rr(x,y,s,s,r); ctx.stroke();}
+  ctx.restore();
+}
+function drawCrop(x,y,s,p,now){
+  const c=CROPS[p.crop],cx=x+s/2,by=y+s*0.86;
+  const ratio=p.ready?1:clamp(p.growth/c.grow,0,1);
+  ctx.textAlign="center"; ctx.textBaseline="middle";
+  if(p.ready){
+    const wob=Math.sin(now*3+x)*2;
+    ctx.strokeStyle="#3e9e54"; ctx.lineWidth=Math.max(2,s*0.05);
+    ctx.beginPath(); ctx.moveTo(cx,by); ctx.lineTo(cx,by-s*0.4); ctx.stroke();
+    ctx.fillStyle="#4caf5d"; leaf(cx,by-s*0.3,s*0.18,-0.6); leaf(cx,by-s*0.36,s*0.18,0.6);
+    ctx.font=`${s*0.5}px serif`; ctx.fillText(c.emoji,cx+wob,by-s*0.5);
+    const tw=(Math.sin(now*4)+1)/2; ctx.globalAlpha=0.5+tw*0.5; ctx.font=`${s*0.22}px serif`;
+    ctx.fillText("✨",cx+s*0.22,by-s*0.7); ctx.globalAlpha=1;
+  } else if(ratio<0.34){
+    ctx.font=`${s*0.3}px serif`; ctx.fillText("🌱",cx,by-s*0.18);
+  } else {
+    const h=s*(0.2+0.42*ratio); ctx.strokeStyle="#3e9e54"; ctx.lineWidth=Math.max(2,s*0.05);
+    ctx.beginPath(); ctx.moveTo(cx,by); ctx.lineTo(cx,by-h); ctx.stroke();
+    ctx.fillStyle="#4caf5d"; leaf(cx,by-h*0.6,s*0.16*ratio+s*0.06,-0.6); leaf(cx,by-h*0.85,s*0.16*ratio+s*0.06,0.6);
+  }
+  function leaf(lx,ly,rr2,dir){ctx.save();ctx.translate(lx,ly);ctx.rotate(dir);ctx.beginPath();ctx.ellipse(rr2*0.7,0,rr2,rr2*0.5,0,0,Math.PI*2);ctx.fill();ctx.restore();}
+}
+
+// ---------- 触屏/点击交互 ----------
+function evtToTile(clientX,clientY){
+  const rect=cv.getBoundingClientRect();
+  const px=(clientX-rect.left)*(cv.width/rect.width);
+  const py=(clientY-rect.top)*(cv.height/rect.height);
+  const i=Math.floor((px-OX)/TILE), j=Math.floor((py-OY)/TILE);
+  if(i<0||i>=GRID_W||j<0||j>=GRID_H)return -1;
+  return j*GRID_W+i;
+}
+cv.addEventListener("mousemove",e=>{const t=evtToTile(e.clientX,e.clientY);if(t!==hover)hover=t;});
+cv.addEventListener("mouseleave",()=>hover=-1);
+cv.addEventListener("click",e=>{const t=evtToTile(e.clientX,e.clientY);if(t>=0)tileAction(t);});
+cv.addEventListener("touchstart",e=>{e.preventDefault();const tc=e.touches[0];const t=evtToTile(tc.clientX,tc.clientY);if(t>=0){hover=t;tileAction(t);}},{passive:false});
+cv.addEventListener("touchmove",e=>e.preventDefault(),{passive:false});
+
+function tileAction(idx){
+  const p=S.plots[idx];
+  if(!p.unlocked){toast("这块地还没解锁，去商店买地～");return;}
+  const tool=S.tool;
+  if(tool==="hoe"){
+    if(p.crop){toast("这里有作物，先收完吧");return;}
+    p.tilled=!p.tilled; if(p.tilled){if(!useEnergy(1)){p.tilled=false;return;}toast("锄好地啦 🪓");}
+  }else if(tool==="water"){
+    if(!p.tilled||!p.crop){toast("先种点东西再浇水～");return;}
+    if(p.ready){toast("已经熟啦，直接收获！");return;}
+    if(p.watered){toast("已经浇过水咯 💧");return;}
+    if(!useEnergy(1))return; p.watered=true;
+  }else if(tool==="harvest"){
+    if(p.crop&&p.ready)harvest(idx);
+    else if(p.crop)toast("还没熟，再等等～");
+    else toast("这里没有可收获的作物");
+  }else if(tool==="plant"){
+    if(!p.tilled){toast("先用锄头锄地 🪓");return;}
+    if(p.crop){toast("这格已经种了东西");return;}
+    plant(idx);
+  }
+  refresh();
+}
+function plant(idx){
+  const sk=S.plantSeed;
+  if(!sk||!(S.inv[sk+"_seed"]>0)){toast("没有这种种子，去商店买或换一种");openSeedPicker();return;}
+  const c=CROPS[sk];
+  if(c.season!==-1&&c.season!==S.season){toast(`${c.name}只能在${SEASONS[c.season]}季种哦`);return;}
+  if(!useEnergy(1))return;
+  S.inv[sk+"_seed"]--; if(S.inv[sk+"_seed"]<=0)delete S.inv[sk+"_seed"];
+  const p=S.plots[idx]; p.crop=sk; p.growth=0; p.ready=false; p.watered=false;
+  toast(`种下了${c.name} ${c.emoji}`); refreshToolbar();
+}
+function harvest(idx){
+  const p=S.plots[idx],c=CROPS[p.crop];
+  if(!useEnergy(1))return;
+  S.inv[p.crop]=(S.inv[p.crop]||0)+1; sparkle(idx);
+  if(c.regrow>0){p.ready=false; p.growth=c.grow-c.regrow; p.watered=false;}
+  else {p.crop=null;p.growth=0;p.ready=false;p.watered=false;}
+  toast(`收获 ${c.name} ${c.emoji} +1`);
+}
+function useEnergy(n){if(S.energy<n){toast("体力不够了，打烊睡一觉吧 😴");return false;}S.energy-=n;return true;}
+
+let particles=[];
+function sparkle(idx){
+  const i=idx%GRID_W,j=Math.floor(idx/GRID_W);
+  const x=OX+i*TILE+TILE/2,y=OY+j*TILE+TILE/2;
+  for(let k=0;k<8;k++)particles.push({x,y,vx:rnd(-2,2),vy:rnd(-3,-1),life:1});
+}
+function drawParticles(){for(const p of particles){ctx.globalAlpha=clamp(p.life,0,1);ctx.font="16px serif";ctx.textAlign="center";ctx.fillText("✨",p.x,p.y);}ctx.globalAlpha=1;}
+function stepParticles(){for(const p of particles){p.x+=p.vx;p.y+=p.vy;p.vy+=0.15;p.life-=0.03;}particles=particles.filter(p=>p.life>0);}
+
+// ---------- 打烊 / 新一天 ----------
+function sleep(){
+  const fd=document.getElementById("fade");
+  document.getElementById("summary").innerHTML=
+    `🌙 今日打烊<br>招待客人 <b>${S.todayServed}</b> 位<br>进账 🪙<b>${S.todayEarn}</b><br><span style="font-size:13px;color:#8a6f57">晚安，明天见～</span>`;
+  fd.classList.add("on");
+  setTimeout(()=>{nextDay();fd.classList.remove("on");},1400);
+}
+function nextDay(){
+  for(const p of S.plots){
+    if(p.crop&&!p.ready){ if(p.watered)p.growth++; p.watered=false; if(p.growth>=CROPS[p.crop].grow)p.ready=true; }
+    else if(p.crop&&p.ready) p.watered=false;
+  }
+  S.day++;
+  if(S.day>SEASON_DAYS){
+    S.day=1; S.season++;
+    if(S.season>3){S.season=0;S.year++;}
+    for(const p of S.plots){
+      if(p.crop){const c=CROPS[p.crop]; if(c.season!==-1&&c.season!==S.season){p.crop=null;p.growth=0;p.ready=false;p.watered=false;}}
+    }
+    toast(`${SEASON_EMOJI[S.season]} 进入${SEASONS[S.season]}季！非当季作物已枯萎`);
+  }
+  S.energy=S.maxEnergy;
+  S.todayEarn=0; S.todayServed=0;
+  S.customers=genCustomers();
+  save(); refresh();
+}
+
+// ---------- 物品显示 ----------
+function itemDisplay(key){
+  if(key.endsWith("_seed")){const c=CROPS[key.replace("_seed","")];return{emoji:c.emoji,name:c.name+"种子"};}
+  if(CROPS[key])return{emoji:CROPS[key].emoji,name:CROPS[key].name};
+  if(PANTRY[key])return{emoji:PANTRY[key].emoji,name:PANTRY[key].name};
+  return{emoji:"❔",name:key};
+}
+function recipeStr(id){
+  const r=DISHES[id].recipe; let s=[];
+  for(const k in r){const d=itemDisplay(k); s.push(`${d.emoji}×${r[k]}`);}
+  return s.join("  ");
+}
+function canCook(id){const r=DISHES[id].recipe; for(const k in r){if((S.inv[k]||0)<r[k])return false;} return true;}
+function missingStr(id){
+  const r=DISHES[id].recipe; let m=[];
+  for(const k in r){const have=S.inv[k]||0; if(have<r[k]){const d=itemDisplay(k);m.push(`${d.emoji}缺${r[k]-have}`);}}
+  return m.join(" ");
+}
+
+// ============================================================
+//  UI
+// ============================================================
+const TOOLS=[
+  {id:"hoe",em:"🪓",nm:"锄地"},
+  {id:"plant",em:"🌱",nm:"种子"},
+  {id:"water",em:"💧",nm:"浇水"},
+  {id:"harvest",em:"🧺",nm:"收获"},
+];
+function refreshToolbar(){
+  const tb=document.getElementById("toolbar"); tb.innerHTML="";
+  for(const t of TOOLS){
+    const d=document.createElement("div");
+    d.className="tool"+(S.tool===t.id?" sel":"");
+    let label=t.nm;
+    if(t.id==="plant"&&S.plantSeed)label=CROPS[S.plantSeed].name;
+    d.innerHTML=`<div>${t.em}</div><div class="nm">${label}</div>`;
+    d.onclick=()=>{
+      if(t.id==="plant"){const owned=Object.keys(S.inv).filter(k=>k.endsWith("_seed"));if(!S.plantSeed||owned.length>1)openSeedPicker();}
+      S.tool=t.id; refreshToolbar();
+    };
+    tb.appendChild(d);
+  }
+}
+function refresh(){
+  if(!S)return;
+  document.getElementById("dateTxt").textContent=`${SEASONS[S.season]} · 第${S.day}天 (第${S.year}年)`;
+  document.getElementById("dateChip").querySelector(".ic").textContent=SEASON_EMOJI[S.season];
+  document.getElementById("goldTxt").textContent=S.gold.toLocaleString();
+  document.getElementById("fameTxt").textContent=S.fame;
+  document.getElementById("energyFill").style.width=Math.round(S.energy/S.maxEnergy*100)+"%";
+  // 小馆角标
+  const badge=document.getElementById("dinerBadge"); const wait=S.customers.length;
+  if(wait>0){badge.style.display="flex";badge.textContent=wait;}else badge.style.display="none";
+  // 顶部提示
+  const tk=document.getElementById("ticker");
+  if(wait>0){tk.innerHTML=`🍽️ 有 <b>${wait}</b> 位客人在等位，去「🍳小馆」招待吧！`;}
+  else{tk.innerHTML=`✨ 客人都招待完啦，打烊休息吧～`;}
+  draw();
+}
+function loop(){stepParticles();draw();drawParticles();requestAnimationFrame(loop);}
+
+let toastTimer=null;
+function toast(msg){const t=document.getElementById("toast");t.textContent=msg;t.classList.add("on");clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove("on"),1600);}
+
+const overlay=document.getElementById("overlay"),panel=document.getElementById("panel");
+function openPanel(title,body){
+  panel.innerHTML=`<div class="ptitle"><span>${title}</span><button class="pclose">✕</button></div><div class="pbody">${body}</div>`;
+  panel.querySelector(".pclose").onclick=closePanel; overlay.classList.add("on");
+}
+function closePanel(){overlay.classList.remove("on");}
+overlay.addEventListener("click",e=>{if(e.target===overlay)closePanel();});
+
+// 选种
+function openSeedPicker(){
+  const owned=Object.keys(S.inv).filter(k=>k.endsWith("_seed")&&S.inv[k]>0);
+  let html="";
+  if(owned.length===0)html=`<div class="empty">背包里没有种子<br>去 🛒 商店买点吧～</div>`;
+  for(const key of owned){
+    const ck=key.replace("_seed",""),c=CROPS[ck],ok=(c.season===-1||c.season===S.season);
+    html+=`<div class="row"><div class="icon">${c.emoji}</div>
+      <div class="info"><div class="nm">${c.name}种子 ×${S.inv[key]}</div>
+      <div class="sub">${ok?`本季可种 · 成长${c.grow}天`:`只能在${SEASONS[c.season]}季种`}</div></div>
+      <div class="act"><button class="pill ${ok?'':'gray'}" data-pick="${ck}">${ok?'选它':'非当季'}</button></div></div>`;
+  }
+  openPanel("🌱 选择种子",html);
+  panel.querySelectorAll("[data-pick]").forEach(b=>b.onclick=()=>{
+    const ck=b.dataset.pick,c=CROPS[ck];
+    if(c.season!==-1&&c.season!==S.season){toast(`${c.name}只能在${SEASONS[c.season]}季种`);return;}
+    S.plantSeed=ck;S.tool="plant";closePanel();refreshToolbar();toast(`已选 ${c.name}，点田地种下`);
+  });
+}
+
+// 商店
+function openShop(){
+  let seeds="";
+  for(const ck in CROPS){
+    if(ck==="ancient")continue;
+    const c=CROPS[ck],inSeason=(c.season===S.season);
+    seeds+=shopRow(c.emoji,`${c.name}种子`,`${SEASONS[c.season]}季 · 成长${c.grow}天${c.regrow?' · 反复结果':''}`,c.seed,ck+"_seed",inSeason?"":"（非当季）");
+  }
+  const a=CROPS.ancient;
+  seeds+=shopRow(a.emoji,`${a.name}种子 ⭐`,`任意季节 · 成长${a.grow}天 · 反复结果，招牌甜点用它`,a.seed,"ancient_seed","");
+  let pantry="";
+  for(const pk in PANTRY){const p=PANTRY[pk];pantry+=shopRow(p.emoji,p.name,`做料理的常用食材`,p.price,pk,"");}
+  const nextLand=S.plots.findIndex(p=>!p.unlocked);
+  const landPrice=300+S.extraLandBought*200;
+  let land=nextLand>=0?shopRow("🏞️","开垦新地","解锁一块新田地（越买越贵）",landPrice,"land",""):`<div class="empty">所有土地都已开垦完毕 🎉</div>`;
+  const html=`<div class="hint">💡 食材买回来 + 自己种的菜，就能在小馆做料理招待客人</div>
+    <div class="sectit">🌱 种子</div>${seeds}
+    <div class="sectit">🧺 杂货食材</div>${pantry}
+    <div class="sectit">🏞️ 扩建</div>${land}`;
+  openPanel("🛒 商店",html); bindShop();
+}
+function shopRow(emoji,name,sub,price,buyId,dis){
+  const can=S.gold>=price&&!dis;
+  return `<div class="row"><div class="icon">${emoji}</div>
+    <div class="info"><div class="nm">${name}</div><div class="sub">${sub}${dis?`<span style="color:#c0394e">${dis}</span>`:''}</div></div>
+    <div class="act"><button class="pill buy ${can?'':'gray'}" data-buy="${buyId}" data-price="${price}">🪙${price}</button></div></div>`;
+}
+function bindShop(){
+  panel.querySelectorAll("[data-buy]").forEach(b=>b.onclick=()=>{
+    const id=b.dataset.buy,price=+b.dataset.price;
+    if(S.gold<price){toast("金币不够啦～");return;}
+    if(id==="land"){const idx=S.plots.findIndex(p=>!p.unlocked);if(idx<0){toast("没有更多地了");return;}S.plots[idx].unlocked=true;S.extraLandBought++;S.gold-=price;toast("开垦了一块新地！🏞️");}
+    else if(id.endsWith("_seed")){const ck=id.replace("_seed","");if(ck!=="ancient"&&CROPS[ck].season!==S.season){toast("非当季种子，现在种不了哦");return;}S.gold-=price;S.inv[id]=(S.inv[id]||0)+1;toast(`买了1包${CROPS[ck].name}种子`);}
+    else if(PANTRY[id]){S.gold-=price;S.inv[id]=(S.inv[id]||0)+1;toast(`买了1份${PANTRY[id].name}`);}
+    save();refresh();openShop();
+  });
+}
+
+// 小馆（点单 + 卖余货）
+let dinerTab="orders";
+function openDiner(){
+  const tabs=`<div class="tabs">
+    <div class="tab ${dinerTab==='orders'?'on':''}" data-tab="orders">🍽️ 客人点单</div>
+    <div class="tab ${dinerTab==='sell'?'on':''}" data-tab="sell">💰 卖余货</div></div>`;
+  let body;
+  if(dinerTab==="orders"){
+    if(S.customers.length===0)body=`<div class="empty">客人都招待完啦 🎉<br>去种菜备货，或「🛏️打烊」迎接明天的客人～</div>`;
+    else{
+      body="";
+      S.customers.forEach((cust,i)=>{
+        const dish=DISHES[cust.dish],ok=canCook(cust.dish);
+        body+=`<div class="row"><div class="icon" style="font-size:30px">${cust.avatar}</div>
+          <div class="info"><div class="nm">想吃 ${dish.emoji}${dish.name}${cust.vip?'<span class="vip">VIP</span>':''}</div>
+          <div class="sub">配方：${recipeStr(cust.dish)}<br>报酬 🪙${cust.pay}${ok?'':` · <span style="color:#c0394e">${missingStr(cust.dish)}</span>`}</div></div>
+          <div class="act"><button class="pill ${ok?'':'gray'}" data-cook="${i}">${ok?'下厨 🍳':'缺食材'}</button></div></div>`;
+      });
+    }
+  }else{
+    const crops=Object.keys(S.inv).filter(k=>CROPS[k]&&S.inv[k]>0);
+    if(crops.length===0)body=`<div class="empty">没有可卖的作物～<br>留着食材做料理更赚哦</div>`;
+    else{
+      body=`<div class="hint">散卖只值一点点，尽量留着做料理招待客人更赚 💰</div>`;
+      for(const ck of crops){const c=CROPS[ck];
+        body+=`<div class="row"><div class="icon">${c.emoji}</div>
+          <div class="info"><div class="nm">${c.name} ×${S.inv[ck]}</div><div class="sub">散卖 🪙${c.sell}/个</div></div>
+          <div class="act"><button class="pill" data-sell1="${ck}">卖1</button><button class="pill red" data-sellall="${ck}">全卖</button></div></div>`;
+      }
+    }
+  }
+  openPanel("🍳 晴野小馆",tabs+body);
+  panel.querySelectorAll("[data-tab]").forEach(t=>t.onclick=()=>{dinerTab=t.dataset.tab;openDiner();});
+  panel.querySelectorAll("[data-cook]").forEach(b=>b.onclick=()=>cook(+b.dataset.cook));
+  panel.querySelectorAll("[data-sell1]").forEach(b=>b.onclick=()=>sellCrop(b.dataset.sell1,1));
+  panel.querySelectorAll("[data-sellall]").forEach(b=>b.onclick=()=>sellCrop(b.dataset.sellall,S.inv[b.dataset.sellall]));
+}
+function cook(i){
+  const cust=S.customers[i]; if(!cust)return;
+  if(!canCook(cust.dish)){toast("食材不够呢～");return;}
+  const r=DISHES[cust.dish].recipe;
+  for(const k in r){S.inv[k]-=r[k];if(S.inv[k]<=0)delete S.inv[k];}
+  S.gold+=cust.pay;
+  const fameGain=8+(cust.vip?14:0); const before=S.fame; S.fame+=fameGain;
+  S.todayEarn+=cust.pay; S.todayServed++;
+  S.customers.splice(i,1);
+  toast(`${DISHES[cust.dish].emoji} 做好啦！+🪙${cust.pay} +⭐${fameGain}`);
+  // 解锁新菜提示
+  for(const id in DISHES){if(before<DISHES[id].fame&&S.fame>=DISHES[id].fame)setTimeout(()=>toast(`🎉 新菜谱解锁：${DISHES[id].emoji}${DISHES[id].name}`),700);}
+  save();refresh();openDiner();
+}
+function sellCrop(ck,n){
+  n=Math.min(n,S.inv[ck]||0);if(n<=0)return;
+  const gain=CROPS[ck].sell*n; S.inv[ck]-=n; if(S.inv[ck]<=0)delete S.inv[ck];
+  S.gold+=gain; toast(`卖出 ${CROPS[ck].name}×${n}，+🪙${gain}`); save();refresh();openDiner();
+}
+
+// 图鉴
+function openBook(){
+  const ids=Object.keys(DISHES); const unlocked=ids.filter(id=>S.fame>=DISHES[id].fame);
+  let html=`<div class="hint">已解锁 <b>${unlocked.length}/${ids.length}</b> 道料理 · 当前人气 ⭐${S.fame}<br>招待客人涨人气，人气越高解锁越多新菜</div>`;
+  ids.sort((a,b)=>DISHES[a].fame-DISHES[b].fame);
+  for(const id of ids){
+    const d=DISHES[id],open=S.fame>=d.fame;
+    if(open){
+      html+=`<div class="row"><div class="icon">${d.emoji}</div>
+        <div class="info"><div class="nm">${d.name} <span class="tag">售🪙${d.price}</span></div>
+        <div class="sub">配方：${recipeStr(id)}</div></div></div>`;
+    }else{
+      html+=`<div class="row" style="opacity:.7"><div class="icon">❔</div>
+        <div class="info"><div class="nm">？？？ <span class="tag lock">人气${d.fame}解锁</span></div>
+        <div class="sub">提升人气后揭晓～</div></div></div>`;
+    }
+  }
+  openPanel("📖 料理图鉴",html);
+}
+
+// 背包
+function openBag(){
+  const keys=Object.keys(S.inv).filter(k=>S.inv[k]>0);
+  let seeds="",crops="",pan="";
+  for(const k of keys){
+    if(k.endsWith("_seed")){const c=CROPS[k.replace("_seed","")];seeds+=bagRow(c.emoji,c.name+"种子",S.inv[k]);}
+    else if(CROPS[k])crops+=bagRow(CROPS[k].emoji,CROPS[k].name,S.inv[k]);
+    else if(PANTRY[k])pan+=bagRow(PANTRY[k].emoji,PANTRY[k].name,S.inv[k]);
+  }
+  let html="";
+  if(seeds)html+=`<div class="sectit">🌱 种子</div>${seeds}`;
+  if(crops)html+=`<div class="sectit">🧺 收获的菜</div>${crops}`;
+  if(pan)html+=`<div class="sectit">🍳 杂货食材</div>${pan}`;
+  if(!html)html=`<div class="empty">背包是空的～</div>`;
+  openPanel("🎒 背包",html);
+}
+function bagRow(em,nm,q){return `<div class="row"><div class="icon">${em}</div><div class="info"><div class="nm">${nm}</div></div><div class="act"><div class="chip" style="border-width:2px;padding:4px 10px;">×${q}</div></div></div>`;}
+
+// 按钮
+document.getElementById("btnShop").onclick=openShop;
+document.getElementById("btnDiner").onclick=()=>{dinerTab="orders";openDiner();};
+document.getElementById("btnBook").onclick=openBook;
+document.getElementById("btnBag").onclick=openBag;
+document.getElementById("btnSleep").onclick=sleep;
+
+// 启动
+function boot(){
+  const loaded=load();
+  if(loaded){S=loaded; if(!S.customers)S.customers=genCustomers(); if(S.fame===undefined)S.fame=0; if(S.todayEarn===undefined){S.todayEarn=0;S.todayServed=0;}}
+  else newGame();
+  resize();refreshToolbar();refresh();loop();
+}
+document.getElementById("startBtn").onclick=()=>{document.getElementById("intro").style.display="none";if(!S)boot();};
+document.getElementById("resetBtn").onclick=()=>{try{localStorage.removeItem(SAVE_KEY);}catch(e){}S=null;document.getElementById("startBtn").textContent="开始营业";toast("已重新开档");};
+window.addEventListener("load",()=>{if(hasSave())document.getElementById("startBtn").textContent="继续营业";});
+window.addEventListener("resize",()=>{if(S)resize();});
+</script>
+</body>
+</html>
