@@ -545,6 +545,20 @@ function drawCrop(x,y,s,p,now){
     ctx.beginPath(); ctx.moveTo(cx,by); ctx.lineTo(cx,by-h); ctx.stroke();
     ctx.fillStyle="#4caf5d"; leaf(cx,by-h*0.6,s*0.16*ratio+s*0.06,-0.6); leaf(cx,by-h*0.85,s*0.16*ratio+s*0.06,0.6);
   }
+  // —— 作物状态提示 ——
+  ctx.textAlign="center"; ctx.textBaseline="middle";
+  if(p.ready){
+    const jb=Math.abs(Math.sin(now*4+x))*s*0.1;            // 跳动的可收获篮子
+    ctx.font=`${s*0.34}px serif`; ctx.fillText("🧺",cx,y+s*0.04-jb);
+  }else{
+    const pw=s*0.4,ph=s*0.085,byy=y+s*0.05,bx=cx-pw/2;     // 成长进度条
+    ctx.fillStyle="rgba(255,255,255,.85)"; rr(bx,byy,pw,ph,ph/2); ctx.fill();
+    ctx.fillStyle="#5fb96b"; rr(bx,byy,Math.max(ph,pw*clamp(p.growth/c.grow,0,1)),ph,ph/2); ctx.fill();
+    if(!p.watered){                                         // 需要浇水：跳动水滴
+      const wb=Math.sin(now*3+x)*s*0.05; ctx.font=`${s*0.3}px serif`;
+      ctx.fillText("💧",cx+pw*0.5+s*0.15,byy+ph*0.5+wb);
+    }
+  }
   function leaf(lx,ly,rr2,dir){ctx.save();ctx.translate(lx,ly);ctx.rotate(dir);ctx.beginPath();ctx.ellipse(rr2*0.7,0,rr2,rr2*0.5,0,0,Math.PI*2);ctx.fill();ctx.restore();}
 }
 function drawPlayer(){
@@ -635,8 +649,8 @@ function charFace(cx,cy,r,def){
 // ---------- 人物移动（BFS 寻路、沿路径行走，绕开建筑/树/池塘）----------
 function stepPlayer(){
   if(!player.path||!player.path.length){if(player.moving){player.moving=false;const cb=player.pending;player.pending=null;if(cb)cb();}return;}
-  player.moving=true; player.walkT+=0.35;
-  const wp=player.path[0], dx=wp[0]-player.col, dy=wp[1]-player.row, dist=Math.hypot(dx,dy), sp=0.16;
+  player.moving=true; player.walkT+=0.3;
+  const wp=player.path[0], dx=wp[0]-player.col, dy=wp[1]-player.row, dist=Math.hypot(dx,dy), sp=0.13;
   if(dist<=sp){player.col=wp[0];player.row=wp[1];player.path.shift();
     if(!player.path.length){player.moving=false;const cb=player.pending;player.pending=null;if(cb)cb();}}
   else{player.col+=dx/dist*sp;player.row+=dy/dist*sp;}
@@ -784,7 +798,12 @@ function refresh(){
   const badge=document.getElementById("dinerBadge"),wait=S.customers.length;
   if(wait>0){badge.style.display="flex";badge.textContent=wait;}else badge.style.display="none";
   const tk=document.getElementById("ticker");
-  tk.innerHTML=wait>0?`🍽️ 有 <b>${wait}</b> 位客人在等位，去「🍳菜馆」招待吧！`:`✨ 客人都招待完啦，悠闲地打烊吧～`;
+  const needWater=S.plots.filter(p=>p.crop&&!p.ready&&!p.watered).length;
+  const canHarvest=S.plots.filter(p=>p.crop&&p.ready).length;
+  if(canHarvest>0) tk.innerHTML=`🧺 有 <b>${canHarvest}</b> 株作物熟啦，快收获！`;
+  else if(needWater>0) tk.innerHTML=`💧 有 <b>${needWater}</b> 块地今天还没浇水`;
+  else if(wait>0) tk.innerHTML=`🍽️ 有 <b>${wait}</b> 位客人在等位，去「🍳菜馆」招待`;
+  else tk.innerHTML=`☕ 一切打理妥当，悠闲一下吧～`;
   draw();
 }
 function loop(){stepPlayer();stepParticles();draw();requestAnimationFrame(loop);}
