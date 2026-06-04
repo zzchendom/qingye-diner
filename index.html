@@ -1058,7 +1058,7 @@ let fishState=null, fishAnim=null;
 function openFishing(){
   if(S.energy<2){toast("体力不够钓鱼了，歇会儿吧 😴");return;}
   S.energy-=2; refresh();
-  const zw=0.22+Math.random()*0.16;                      // 命中区宽度（越窄越刺激）
+  const zw=0.27+Math.random()*0.16;                      // 命中区宽度（越窄越刺激）
   fishState={phase:"cast",marker:0,zoneStart:0.1+Math.random()*(0.8-zw),zoneW:zw,fish:null,timer:null};
   renderFishing();
   fishState.timer=setTimeout(()=>{if(fishState&&fishState.phase==="cast"){fishState.phase="reel";renderFishing();startFishAnim();}},1000+Math.random()*2200);
@@ -1088,7 +1088,7 @@ function startFishAnim(){
   const c2=document.getElementById("fishcv"); if(!c2)return; const g=c2.getContext("2d"); let t=0;
   function fr(){
     if(!fishState||fishState.phase!=="reel"){return;}
-    t+=0.028; fishState.marker=Math.sin(t*3)*0.5+0.5;
+    t+=0.022; fishState.marker=Math.sin(t*3)*0.5+0.5;
     const W=c2.width,H=c2.height; g.clearRect(0,0,W,H);
     g.fillStyle="#e8d9b8"; g.fillRect(0,H*0.32,W,H*0.36);
     g.fillStyle="#a6e29b"; g.fillRect(fishState.zoneStart*W,H*0.32,fishState.zoneW*W,H*0.36);
