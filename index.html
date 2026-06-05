@@ -31,7 +31,8 @@
   .chip .ic{font-size:16px;}
   .chip.gold{color:#b8860b;} .chip.fame{color:#e0568b;}
   #energyWrap{flex:1; min-width:90px; max-width:240px; background:var(--panel);
-    border:3px solid var(--line2); border-radius:14px; padding:3px 8px 4px; box-shadow:0 3px 0 rgba(0,0,0,.10);}
+    border:3px solid var(--line2); border-radius:14px; padding:3px 8px 4px; box-shadow:0 3px 0 rgba(0,0,0,.10); cursor:pointer;}
+  #energyWrap:active{transform:translateY(1px); box-shadow:0 2px 0 rgba(0,0,0,.10);}
   #energyBar{height:12px; border-radius:8px; background:#f0e0c0; overflow:hidden;}
   #energyFill{height:100%; width:100%; border-radius:8px; background:linear-gradient(90deg,#ffd25a,#ff9f43); transition:width .3s;}
   #energyWrap .lbl{font-size:10px; font-weight:800; color:var(--ink2);}
@@ -175,7 +176,7 @@
     <div class="chip" id="dateChip"><span class="ic">🌸</span><span id="dateTxt">春 · 第1天</span></div>
     <div class="chip gold"><span class="ic">🪙</span><span id="goldTxt">0</span></div>
     <div class="chip fame"><span class="ic">⭐</span><span id="fameTxt">0</span></div>
-    <div id="energyWrap"><div class="lbl">体力</div><div id="energyBar"><div id="energyFill"></div></div></div>
+    <div id="energyWrap" title="点我吃东西回体力"><div class="lbl">体力 🍴</div><div id="energyBar"><div id="energyFill"></div></div></div>
   </div>
   <div id="stage">
     <canvas id="cv"></canvas>
@@ -1028,6 +1029,38 @@ function sellGood(k,n){
   S.gold+=gain; toast(`卖出 ${itemDisplay(k).name}×${n}，+🪙${gain}`); save();refresh();reopenScroll(openDiner);
 }
 
+// ========== 🍽️ 吃东西回体力 ==========
+function edibleEnergy(k){
+  if(CROPS[k])return clamp(Math.round(CROPS[k].sell*0.4),10,30);
+  if(k==="egg")return 12; if(k==="milk")return 14;
+  if(FISH[k]&&k!=="boot")return clamp(Math.round(FISH[k].value*0.3),12,40);
+  return 0;
+}
+function openEat(){
+  const items=Object.keys(S.inv).filter(k=>edibleEnergy(k)>0&&S.inv[k]>0).sort((a,b)=>edibleEnergy(b)-edibleEnergy(a));
+  let body=`<div class="hint">体力 <b>${S.energy}</b>/${S.maxEnergy} · 吃点东西补体力，自己也得好好吃饭嘛 🍚<br>🥕作物 / 🥚蛋奶回得少，🐟鱼回得多；体力满了就别浪费啦</div>`;
+  if(items.length===0){
+    body+=`<div class="empty">背包里没有能吃的东西～<br>去地里收点菜，或钓条鱼 🎣<br><span class="fishhint">（实在没有，就「🛏️打烊」睡一觉，明天体力回满）</span></div>`;
+  }else{
+    for(const k of items){const d=itemDisplay(k);
+      body+=`<div class="row"><div class="icon">${d.emoji}</div>
+        <div class="info"><div class="nm">${d.name} ×${S.inv[k]}</div><div class="sub">吃一个回 ⚡${edibleEnergy(k)} 体力</div></div>
+        <div class="act"><button class="pill" data-eat="${k}">吃 🍴</button></div></div>`;
+    }
+  }
+  openPanel("🍽️ 吃点东西",body);
+  panel.querySelector(".pclose").onclick=closePanel;
+  panel.querySelectorAll("[data-eat]").forEach(b=>b.onclick=()=>eat(b.dataset.eat));
+}
+function eat(k){
+  const e=edibleEnergy(k); if(e<=0||!(S.inv[k]>0))return;
+  if(S.energy>=S.maxEnergy){toast("体力满着呢，留着肚子干活吧 😋");return;}
+  S.inv[k]--; if(S.inv[k]<=0)delete S.inv[k];
+  const before=S.energy; S.energy=Math.min(S.maxEnergy,S.energy+e);
+  const d=itemDisplay(k); toast(`吃了 ${d.emoji}${d.name}，体力 +${S.energy-before} ⚡`);
+  save();refresh();reopenScroll(openEat);
+}
+
 // 图鉴
 function openBook(){
   const ids=Object.keys(DISHES),unlocked=ids.filter(id=>S.fame>=DISHES[id].fame);
@@ -1275,6 +1308,7 @@ document.getElementById("btnDiner").onclick=()=>{dinerTab="orders";openDiner();}
 document.getElementById("btnBook").onclick=openBook;
 document.getElementById("btnBag").onclick=openBag;
 document.getElementById("btnSleep").onclick=sleep;
+document.getElementById("energyWrap").onclick=openEat;
 
 // ---------- 启动流程 ----------
 let started=false;
