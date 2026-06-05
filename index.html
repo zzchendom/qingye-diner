@@ -107,6 +107,12 @@
   .fishmsg{font-size:15px; font-weight:800; color:var(--ink); line-height:1.5;}
   .fishhint{font-size:12px; color:var(--ink2); font-weight:600;}
   #fishcv{background:#cdeefb; border:3px solid var(--line2); border-radius:12px; width:300px; max-width:100%;}
+  #rushcv{background:#fff6e6; border:3px solid var(--line2); border-radius:12px; width:320px; max-width:100%;}
+  .rushtray{display:grid; grid-template-columns:repeat(3,1fr); gap:8px; width:100%; max-width:320px;}
+  .rushbtn{font-size:30px; padding:12px 0; border:3px solid #e0b870; border-radius:14px; background:#ffe7b3; box-shadow:0 4px 0 #e0b870; cursor:pointer;}
+  .rushbtn:active{transform:translateY(3px); box-shadow:0 1px 0 #e0b870;}
+  .rushintro{text-align:center; display:flex; flex-direction:column; align-items:center; gap:8px; padding:14px 6px;}
+  .rushbig{font-size:48px; animation:bob 1.6s ease-in-out infinite;}
   .bigpill{padding:13px 30px; border-radius:16px; font-weight:900; font-size:17px; color:#fff; cursor:pointer;
     border:3px solid var(--green-d); background:var(--green); box-shadow:0 5px 0 var(--green-d);}
   .bigpill:active{transform:translateY(3px); box-shadow:0 2px 0 var(--green-d);}
@@ -319,7 +325,7 @@ function newGame(name,charId){
     plots:Array.from({length:GRID_W*GRID_H},(_,i)=>({unlocked:i<START_PLOTS,tilled:false,crop:null,growth:0,watered:false,ready:false})),
     inv:{strawberry_seed:6, strawberry:6, potato:4, egg:3, flour:3, butter:2, milk:2},
     tool:"hoe", plantSeed:"strawberry", extraLandBought:0,
-    customers:[], todayEarn:0, todayServed:0,
+    customers:[], todayEarn:0, todayServed:0, bestRush:0,
   };
   S.customers=genCustomers();
   return S;
@@ -962,9 +968,16 @@ let dinerTab="orders";
 function openDiner(){
   const tabs=`<div class="tabs">
     <div class="tab ${dinerTab==='orders'?'on':''}" data-tab="orders">🍽️ 客人点单</div>
+    <div class="tab ${dinerTab==='rush'?'on':''}" data-tab="rush">🔥 出餐大作战</div>
     <div class="tab ${dinerTab==='sell'?'on':''}" data-tab="sell">💰 卖余货</div></div>`;
   let body;
-  if(dinerTab==="orders"){
+  if(dinerTab==="rush"){
+    body=`<div class="hint">高峰冲刺：客人接连点单，点下方对应的菜准时出餐。出餐越快、连击越高赚得越多；漏单 3 次就打烊 😤</div>
+      <div class="rushintro"><div class="rushbig">🔥</div>
+        <div style="font-weight:800">历史最高分：<b style="color:#e8632e">${S.bestRush||0}</b></div>
+        <div class="sub">消耗 ⚡3 体力 · 手速与眼力的考验，难度会越来越快</div>
+        <button class="bigpill" id="rushStart">开张冲刺！(⚡3)</button></div>`;
+  }else if(dinerTab==="orders"){
     if(S.customers.length===0)body=`<div class="empty">客人都招待完啦 🎉<br>去种菜备货，或「🛏️打烊」迎接明天的客人～</div>`;
     else{
       body=`<div class="hint">招待不完也没关系——客人会自己回家，没有惩罚，慢慢来 ☕</div>`;
@@ -990,6 +1003,7 @@ function openDiner(){
   }
   openPanel("🍳 退休菜馆",tabs+body);
   panel.querySelectorAll("[data-tab]").forEach(t=>t.onclick=()=>{dinerTab=t.dataset.tab;openDiner();});
+  const rsBtn=document.getElementById("rushStart"); if(rsBtn)rsBtn.onclick=startRush;
   panel.querySelectorAll("[data-cook]").forEach(b=>b.onclick=()=>cook(+b.dataset.cook));
   panel.querySelectorAll("[data-sell1]").forEach(b=>b.onclick=()=>sellGood(b.dataset.sell1,1));
   panel.querySelectorAll("[data-sellall]").forEach(b=>b.onclick=()=>sellGood(b.dataset.sellall,S.inv[b.dataset.sellall]));
@@ -1058,8 +1072,9 @@ let fishState=null, fishAnim=null;
 function openFishing(){
   if(S.energy<2){toast("体力不够钓鱼了，歇会儿吧 😴");return;}
   S.energy-=2; refresh();
-  const zw=0.27+Math.random()*0.16;                      // 命中区宽度（越窄越刺激）
-  fishState={phase:"cast",marker:0,zoneStart:0.1+Math.random()*(0.8-zw),zoneW:zw,fish:null,timer:null};
+  const zw=0.13+Math.random()*0.09;                      // 命中区宽度（越窄越刺激）
+  const zs=0.1+Math.random()*(0.8-zw);
+  fishState={phase:"cast",marker:0,zoneStart:zs,zoneW:zw,zoneCtr:zs+zw/2,curStart:zs,curW:zw,fish:null,timer:null};
   renderFishing();
   fishState.timer=setTimeout(()=>{if(fishState&&fishState.phase==="cast"){fishState.phase="reel";renderFishing();startFishAnim();}},1000+Math.random()*2200);
 }
@@ -1088,10 +1103,13 @@ function startFishAnim(){
   const c2=document.getElementById("fishcv"); if(!c2)return; const g=c2.getContext("2d"); let t=0;
   function fr(){
     if(!fishState||fishState.phase!=="reel"){return;}
-    t+=0.022; fishState.marker=Math.sin(t*3)*0.5+0.5;
+    t+=0.028; fishState.marker=Math.sin(t*3.4)*0.5+0.5;
+    const shrink=Math.max(0.5,1-t*0.10);                  // 绿区随时间收缩，犹豫越久越难
+    fishState.curW=fishState.zoneW*shrink;
+    fishState.curStart=fishState.zoneCtr-fishState.curW/2;
     const W=c2.width,H=c2.height; g.clearRect(0,0,W,H);
     g.fillStyle="#e8d9b8"; g.fillRect(0,H*0.32,W,H*0.36);
-    g.fillStyle="#a6e29b"; g.fillRect(fishState.zoneStart*W,H*0.32,fishState.zoneW*W,H*0.36);
+    g.fillStyle="#a6e29b"; g.fillRect(fishState.curStart*W,H*0.32,fishState.curW*W,H*0.36);
     const mx=fishState.marker*W; g.fillStyle="#ef476f"; g.fillRect(mx-3,H*0.12,6,H*0.76);
     fishAnim=requestAnimationFrame(fr);
   }
@@ -1100,7 +1118,7 @@ function startFishAnim(){
 function reelTap(){
   if(!fishState||fishState.phase!=="reel")return;
   cancelAnimationFrame(fishAnim);
-  const m=fishState.marker, hit=m>=fishState.zoneStart&&m<=fishState.zoneStart+fishState.zoneW;
+  const m=fishState.marker, hit=m>=fishState.curStart&&m<=fishState.curStart+fishState.curW;
   if(hit){const f=rollFish(); S.inv[f.key]=(S.inv[f.key]||0)+1; fishState.fish=f; toast(`钓到 ${f.emoji}${f.name}！`);}
   else fishState.fish=null;
   fishState.phase="done"; save(); refresh(); renderFishing();
@@ -1111,6 +1129,106 @@ function rollFish(){
   const k=Object.keys(FISH)[0]; return {key:k,...FISH[k]};
 }
 function closeFishing(){if(fishState&&fishState.timer)clearTimeout(fishState.timer);cancelAnimationFrame(fishAnim);fishState=null;closePanel();}
+
+// ========== 🔥 出餐大作战 ==========
+let rushState=null, rushAnim=null;
+const RUSH_POOL=["pancake","radishsoup","salad","daifuku","tomatosoup","sushi"];
+function startRush(){
+  if(S.energy<3){toast("体力不够开张冲刺了，歇会儿吧 😴");return;}
+  S.energy-=3; refresh();
+  rushState={lives:3,score:0,gold:0,fame:0,combo:0,maxCombo:0,slots:[],
+    elapsed:0,lastSpawn:900,last:performance.now(),over:false,newRec:false,flash:0,hitflash:0};
+  renderRush();
+  rushAnim=requestAnimationFrame(rushFrame);
+}
+function renderRush(){
+  const tray=RUSH_POOL.map(k=>`<button class="rushbtn" data-dish="${k}">${DISHES[k].emoji}</button>`).join("");
+  const body=`<div class="fishwrap">
+    <div class="fishhint">点对应的菜出餐！别让客人等到耐心耗光 😤（漏单 3 次打烊）</div>
+    <canvas id="rushcv" width="320" height="172"></canvas>
+    <div class="rushtray">${tray}</div>
+    <button class="pill gray2" id="rushQuit">不玩了 / 收工</button></div>`;
+  openPanel("🔥 出餐大作战",body);
+  panel.querySelector(".pclose").onclick=quitRush;
+  panel.querySelectorAll("[data-dish]").forEach(b=>b.onclick=()=>serveDish(b.dataset.dish));
+  const q=document.getElementById("rushQuit"); if(q)q.onclick=quitRush;
+  const cv=document.getElementById("rushcv"); rushState.cv=cv; rushState.g=cv?cv.getContext("2d"):null;
+  drawRush();
+}
+function rushFrame(now){
+  const rs=rushState; if(!rs||rs.over)return;
+  const dt=Math.min(0.05,(now-rs.last)/1000); rs.last=now; rs.elapsed+=dt*1000; rs.lastSpawn+=dt*1000;
+  const gap=Math.max(560,1400-rs.elapsed*0.05);
+  if(rs.lastSpawn>=gap&&rs.slots.length<4){
+    rs.lastSpawn=0;
+    const pm=Math.max(2.2,4.5-rs.elapsed/9000);                 // 耐心时长(秒)随时间缩短
+    const dish=RUSH_POOL[Math.floor(Math.random()*RUSH_POOL.length)];
+    rs.slots.push({dish,p:1,drain:1/pm});
+  }
+  for(const s of rs.slots)s.p-=s.drain*dt;
+  for(let i=rs.slots.length-1;i>=0;i--){
+    if(rs.slots[i].p<=0){rs.slots.splice(i,1);rs.lives--;rs.combo=0;rs.flash=0.5;
+      if(rs.lives<=0){endRush();return;}}
+  }
+  if(rs.flash>0)rs.flash-=dt; if(rs.hitflash>0)rs.hitflash-=dt;
+  drawRush();
+  rushAnim=requestAnimationFrame(rushFrame);
+}
+function serveDish(dish){
+  const rs=rushState; if(!rs||rs.over)return;
+  let idx=-1,lo=2;
+  for(let i=0;i<rs.slots.length;i++){if(rs.slots[i].dish===dish&&rs.slots[i].p<lo){lo=rs.slots[i].p;idx=i;}}
+  if(idx<0){rs.combo=0;rs.flash=0.3;return;}                    // 点错：断连击
+  const s=rs.slots[idx];
+  rs.combo++; rs.maxCombo=Math.max(rs.maxCombo,rs.combo);
+  const mult=1+Math.min(rs.combo-1,9)*0.1;                      // 连击最高 2 倍
+  const pts=Math.round((10+s.p*12)*mult);                       // 出得越快分越高
+  rs.score+=pts; rs.gold+=Math.round(pts*0.6); rs.fame+=1;
+  rs.slots.splice(idx,1); rs.hitflash=0.25;
+}
+function drawRush(){
+  const rs=rushState,g=rs.g; if(!g)return; const W=rs.cv.width,H=rs.cv.height;
+  g.clearRect(0,0,W,H); g.fillStyle="#fff6e6"; g.fillRect(0,0,W,H);
+  g.font="bold 14px sans-serif"; g.textBaseline="alphabetic";
+  g.textAlign="left"; g.fillStyle="#8a6d2f"; g.fillText("🪙 "+rs.gold,8,19);
+  g.textAlign="center"; g.fillStyle=rs.combo>=3?"#e8632e":"#bbab8a"; g.fillText(rs.combo>1?("连击 x"+rs.combo):"",W/2,19);
+  g.textAlign="right"; g.fillStyle="#e1503e"; g.fillText("❤".repeat(rs.lives)+"♡".repeat(3-rs.lives),W-8,19);
+  const cw=W/4;
+  for(let i=0;i<rs.slots.length;i++){
+    const s=rs.slots[i],cx=cw*i+cw/2;
+    g.textAlign="center"; g.textBaseline="middle"; g.font="22px sans-serif"; g.fillText("🙂",cx,52);
+    g.font="34px sans-serif"; g.fillText(DISHES[s.dish].emoji,cx,92);
+    const bw=cw*0.72,bx=cx-bw/2,by=H-38;
+    g.fillStyle="#e7ddc8"; g.fillRect(bx,by,bw,10);
+    g.fillStyle=s.p>0.5?"#5cc46a":s.p>0.25?"#e8b13a":"#e1503e"; g.fillRect(bx,by,Math.max(0,bw*s.p),10);
+  }
+  g.textBaseline="alphabetic";
+  if(rs.flash>0){g.fillStyle="rgba(225,80,62,"+(rs.flash*0.5)+")"; g.fillRect(0,0,W,H);}
+  if(rs.hitflash>0){g.fillStyle="rgba(120,210,120,"+(rs.hitflash*0.55)+")"; g.fillRect(0,0,W,H);}
+}
+function bankRush(){
+  const rs=rushState; if(!rs)return;
+  S.gold+=rs.gold; const before=S.fame; S.fame+=rs.fame;
+  rs.newRec=rs.score>(S.bestRush||0); if(rs.newRec)S.bestRush=rs.score;
+  for(const id in DISHES){if(before<DISHES[id].fame&&S.fame>=DISHES[id].fame)setTimeout(()=>toast(`🎉 新菜谱解锁：${DISHES[id].emoji}${DISHES[id].name}`),700);}
+  save(); refresh();
+}
+function endRush(){
+  const rs=rushState; rs.over=true; cancelAnimationFrame(rushAnim); bankRush();
+  const body=`<div class="fishwrap">
+    <div class="fishbig">🍽️</div>
+    <div class="fishmsg">打烊啦！本场得分 <b>${rs.score}</b><br>最高连击 x${rs.maxCombo} · 收入 🪙${rs.gold} · 名气 +⭐${rs.fame}${rs.newRec?'<br><span style="color:#e8632e;font-weight:900">🏆 新纪录！</span>':''}</div>
+    <div class="actrow" style="justify-content:center"><button class="bigpill" id="rushAgain">再来一场 (⚡3)</button><button class="pill gray2" id="rushDone">收工</button></div></div>`;
+  openPanel("🔥 出餐大作战",body);
+  panel.querySelector(".pclose").onclick=()=>{rushState=null;dinerTab="rush";openDiner();};
+  document.getElementById("rushAgain").onclick=()=>{rushState=null;startRush();};
+  document.getElementById("rushDone").onclick=()=>{rushState=null;dinerTab="rush";openDiner();};
+}
+function quitRush(){
+  cancelAnimationFrame(rushAnim);
+  if(rushState&&!rushState.over)bankRush();
+  rushState=null; dinerTab="rush"; openDiner();
+}
 
 // ========== ⛏️ 下矿 ==========
 function genNodes(depth){const a=[];for(let i=0;i<6;i++)a.push({hp:1+(Math.random()<0.45?1:0),got:false});return a;}
